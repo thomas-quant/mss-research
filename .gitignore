@@ -1,0 +1,16 @@
+# Local market data (large / potentially proprietary)
+data/
+
+# Python caches / virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Research outputs
+outputs/
+reports/
+*.log
