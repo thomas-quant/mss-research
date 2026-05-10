@@ -52,6 +52,8 @@ These figures are generated from the current local summary output and committed 
 
 ![Mean aligned return by event type](outputs/figures/mean_return_by_event_type.png)
 
+![MSS aligned return distribution](outputs/figures/mss_aligned_return_distribution.png)
+
 ![Sample size by event type](outputs/figures/sample_size_by_event_type.png)
 
 ![Win rate by momentum bucket](outputs/figures/win_rate_by_momentum_bucket.png)
@@ -64,7 +66,7 @@ These figures are generated from the current local summary output and committed 
 PYTHONPATH=src python3 -m mss_research plots --summary outputs/summary.csv --out outputs/figures
 ```
 
-Graphs include win rate, mean aligned return, sample size, momentum buckets, and relative-volume buckets.
+Graphs include win rate, mean aligned return, MSS P25/mean/P75 aligned-return distribution, sample size, momentum buckets, and relative-volume buckets.
 
 ## Tests
 

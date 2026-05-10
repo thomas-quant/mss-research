@@ -356,7 +356,9 @@ def summarize_events(events: pd.DataFrame, horizons: Iterable[int], bootstrap_it
                     "mean_aligned_return": float(aligned.mean()) if len(aligned) else np.nan,
                     "mean_aligned_return_ci_low": mean_lo,
                     "mean_aligned_return_ci_high": mean_hi,
+                    "p25_aligned_return": float(aligned.quantile(0.25)) if len(aligned) else np.nan,
                     "median_aligned_return": float(aligned.median()) if len(aligned) else np.nan,
+                    "p75_aligned_return": float(aligned.quantile(0.75)) if len(aligned) else np.nan,
                 }
             )
     return pd.DataFrame(rows)

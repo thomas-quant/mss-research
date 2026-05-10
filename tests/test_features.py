@@ -124,3 +124,28 @@ def test_intermediate_mss_waits_until_after_prominence_confirmation_bar():
     bullish = events[events["direction"] == 1].iloc[0]
     assert bullish["broken_swing_idx"] == 3
     assert bullish["event_idx"] == 7
+
+
+def test_summarize_events_includes_p25_and_p75_aligned_returns():
+    from mss_research.features import summarize_events
+
+    events = pd.DataFrame(
+        {
+            "instrument": ["ES"] * 4,
+            "timeframe": ["5min"] * 4,
+            "event_type": ["mss"] * 4,
+            "swing_tier": ["short"] * 4,
+            "closed_through": [True] * 4,
+            "momentum_bucket": ["high"] * 4,
+            "relative_volume_bucket": ["normal"] * 4,
+            "broken_swing_rsi_divergence": [False] * 4,
+            "broken_swing_volume_divergence": [False] * 4,
+            "aligned_return_5": [-0.02, -0.01, 0.01, 0.04],
+            "win_5": [False, False, True, True],
+        }
+    )
+
+    summary = summarize_events(events, horizons=[5], bootstrap_iterations=5)
+
+    assert summary.loc[0, "p25_aligned_return"] == pytest.approx(-0.0125)
+    assert summary.loc[0, "p75_aligned_return"] == pytest.approx(0.0175)

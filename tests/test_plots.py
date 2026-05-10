@@ -56,3 +56,21 @@ def test_create_summary_plots_writes_core_pngs(tmp_path):
     assert "mean_return_by_event_type.png" in names
     assert "sample_size_by_event_type.png" in names
     assert all(p.exists() and p.stat().st_size > 0 for p in paths)
+
+
+def test_create_mss_distribution_plot_writes_quantile_png(tmp_path):
+    from mss_research.plots import create_mss_distribution_plot
+
+    events = pd.DataFrame(
+        [
+            {"event_type": "mss", "swing_tier": "short", "closed_through": True, "timeframe": "5min", "aligned_return_5": -0.01},
+            {"event_type": "mss", "swing_tier": "short", "closed_through": True, "timeframe": "5min", "aligned_return_5": 0.00},
+            {"event_type": "mss", "swing_tier": "short", "closed_through": True, "timeframe": "5min", "aligned_return_5": 0.03},
+            {"event_type": "rsi_divergence", "swing_tier": "short", "closed_through": pd.NA, "timeframe": "5min", "aligned_return_5": 0.10},
+        ]
+    )
+
+    path = create_mss_distribution_plot(events, tmp_path, horizons=[5])
+
+    assert path.name == "mss_aligned_return_distribution.png"
+    assert path.exists() and path.stat().st_size > 0
