@@ -149,3 +149,29 @@ def test_summarize_events_includes_p25_and_p75_aligned_returns():
 
     assert summary.loc[0, "p25_aligned_return"] == pytest.approx(-0.0125)
     assert summary.loc[0, "p75_aligned_return"] == pytest.approx(0.0175)
+
+
+def test_mss_event_includes_leg_volume_and_rsi_momentum_context():
+    df = bars(
+        [10, 12, 11, 12.5, 13.0, 11],
+        lows=[9, 10, 9, 11, 12, 10],
+        closes=[9.5, 11.5, 10.5, 11.8, 12.6, 10.5],
+        opens=[9.5, 11, 11, 11.6, 12, 12],
+        volumes=[100, 100, 100, 200, 300, 100],
+    )
+    df = detect_swings(df, k=1)
+    df = detect_intermediate_swings(df, k=1)
+    df = add_indicators(df, rsi_period=2, rolling_window=2)
+    df.loc[:, "rsi"] = [50, 55, 35, 72, 68, 45]
+
+    events = detect_mss_events(df, tier="short", k=1)
+
+    bullish = events[events["direction"] == 1].iloc[0]
+    assert bullish["leg_start_idx"] == 2
+    assert bullish["leg_bar_count"] == 2
+    assert bullish["leg_volume_sum"] == 300
+    assert bullish["leg_relative_volume"] == pytest.approx(1.5)
+    assert bullish["leg_volume_bucket"] == "high"
+    assert bullish["leg_rsi_extreme"] == 72
+    assert bullish["leg_rsi_aligned"] == 72
+    assert bullish["leg_rsi_momentum_bucket"] == "high"

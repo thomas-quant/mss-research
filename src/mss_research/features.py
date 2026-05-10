@@ -180,6 +180,19 @@ def detect_mss_events(df: pd.DataFrame, tier: str = "short", k: int = 1) -> pd.D
     high = out["High"].to_numpy(dtype=float)
     low = out["Low"].to_numpy(dtype=float)
     close = out["Close"].to_numpy(dtype=float)
+    last_swing_high_before = np.full(n, -1, dtype=int)
+    last_swing_low_before = np.full(n, -1, dtype=int)
+    last_high = -1
+    last_low = -1
+    short_high_flags = out["swing_high"].to_numpy(dtype=bool) if "swing_high" in out.columns else np.zeros(n, dtype=bool)
+    short_low_flags = out["swing_low"].to_numpy(dtype=bool) if "swing_low" in out.columns else np.zeros(n, dtype=bool)
+    for idx in range(n):
+        last_swing_high_before[idx] = last_high
+        last_swing_low_before[idx] = last_low
+        if short_high_flags[idx]:
+            last_high = idx
+        if short_low_flags[idx]:
+            last_low = idx
 
     high_schedule: dict[int, list[int]] = {}
     low_schedule: dict[int, list[int]] = {}
@@ -216,11 +229,13 @@ def detect_mss_events(df: pd.DataFrame, tier: str = "short", k: int = 1) -> pd.D
             active_low_avail = i
 
         if active_high_idx is not None and i > active_high_avail and high[i] > active_high_price:
-            events.append(_event_row(out, i, 1, tier, active_high_idx, active_high_price, close[i] > active_high_price))
+            leg_start_idx = int(last_swing_low_before[i]) if last_swing_low_before[i] >= 0 else max(0, i - 1)
+            events.append(_event_row(out, i, 1, tier, active_high_idx, active_high_price, close[i] > active_high_price, leg_start_idx))
             active_high_idx = None
 
         if active_low_idx is not None and i > active_low_avail and low[i] < active_low_price:
-            events.append(_event_row(out, i, -1, tier, active_low_idx, active_low_price, close[i] < active_low_price))
+            leg_start_idx = int(last_swing_high_before[i]) if last_swing_high_before[i] >= 0 else max(0, i - 1)
+            events.append(_event_row(out, i, -1, tier, active_low_idx, active_low_price, close[i] < active_low_price, leg_start_idx))
             active_low_idx = None
 
     result = pd.DataFrame(events)
@@ -229,9 +244,19 @@ def detect_mss_events(df: pd.DataFrame, tier: str = "short", k: int = 1) -> pd.D
             result[col] = result[col].astype(object)
     return result
 
-def _event_row(df: pd.DataFrame, i: int, direction: int, tier: str, swing_idx: int, swing_price: float, closed: bool) -> dict:
+def _event_row(
+    df: pd.DataFrame,
+    i: int,
+    direction: int,
+    tier: str,
+    swing_idx: int,
+    swing_price: float,
+    closed: bool,
+    leg_start_idx: int,
+) -> dict:
     row = df.iloc[i]
     swing = df.iloc[swing_idx]
+    leg = _leg_context(df, i, direction, leg_start_idx)
     return {
         "event_type": "mss",
         "event_idx": int(i),
@@ -248,7 +273,53 @@ def _event_row(df: pd.DataFrame, i: int, direction: int, tier: str, swing_idx: i
         "relative_volume_bucket": row.get("relative_volume_bucket", np.nan),
         "broken_swing_rsi_divergence": bool(swing.get("rsi_divergence_direction", 0) == -direction),
         "broken_swing_volume_divergence": bool(swing.get("volume_divergence_direction", 0) == -direction),
+        **leg,
     }
+
+
+def _leg_context(df: pd.DataFrame, event_idx: int, direction: int, leg_start_idx: int) -> dict:
+    """Context for the impulse leg that creates the MSS.
+
+    Bullish MSS leg starts at latest short-term swing low before the break.
+    Bearish MSS leg starts at latest short-term swing high before the break.
+    RSI is direction-aligned: high RSI for bullish, low RSI inverted as 100-RSI for bearish.
+    """
+    leg_start_idx = int(max(0, min(leg_start_idx, event_idx)))
+    leg = df.iloc[leg_start_idx : event_idx + 1]
+    bar_count = int(len(leg))
+    leg_volume_sum = float(leg["Volume"].sum())
+    baseline_volume = df.iloc[event_idx].get("rolling_volume_median", np.nan)
+    denom = float(baseline_volume) * bar_count if pd.notna(baseline_volume) and float(baseline_volume) > 0 else np.nan
+    leg_relative_volume = leg_volume_sum / denom if pd.notna(denom) and denom > 0 else np.nan
+    if direction == 1:
+        leg_rsi_extreme = float(leg["rsi"].max()) if "rsi" in leg else np.nan
+        leg_rsi_aligned = leg_rsi_extreme
+    else:
+        leg_rsi_extreme = float(leg["rsi"].min()) if "rsi" in leg else np.nan
+        leg_rsi_aligned = 100.0 - leg_rsi_extreme if pd.notna(leg_rsi_extreme) else np.nan
+    start_close = float(df.iloc[leg_start_idx]["Close"])
+    end_close = float(df.iloc[event_idx]["Close"])
+    leg_aligned_return = direction * (end_close / start_close - 1.0) if start_close else np.nan
+    return {
+        "leg_start_idx": leg_start_idx,
+        "leg_bar_count": bar_count,
+        "leg_volume_sum": leg_volume_sum,
+        "leg_relative_volume": leg_relative_volume,
+        "leg_volume_bucket": _bucket_value(leg_relative_volume, (0.8, 1.2), ("low", "normal", "high")),
+        "leg_rsi_extreme": leg_rsi_extreme,
+        "leg_rsi_aligned": leg_rsi_aligned,
+        "leg_rsi_momentum_bucket": _bucket_value(leg_rsi_aligned, (55.0, 65.0), ("low", "medium", "high")),
+        "leg_aligned_return": leg_aligned_return,
+    }
+
+def _bucket_value(value: float, cuts: tuple[float, float], labels: tuple[str, str, str]) -> str | float:
+    if pd.isna(value):
+        return np.nan
+    if value < cuts[0]:
+        return labels[0]
+    if value < cuts[1]:
+        return labels[1]
+    return labels[2]
 
 
 def divergence_events(df: pd.DataFrame, divergence_type: str) -> pd.DataFrame:
@@ -332,6 +403,8 @@ def summarize_events(events: pd.DataFrame, horizons: Iterable[int], bootstrap_it
             "relative_volume_bucket",
             "broken_swing_rsi_divergence",
             "broken_swing_volume_divergence",
+            "leg_rsi_momentum_bucket",
+            "leg_volume_bucket",
         ]
         if c in events.columns
     ]

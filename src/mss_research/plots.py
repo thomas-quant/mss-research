@@ -73,6 +73,10 @@ def create_summary_plots(summary: pd.DataFrame, out_dir: Path | str) -> list[Pat
         paths.append(_bucket_plot(data, "momentum_bucket", "win_rate", out_path / "win_rate_by_momentum_bucket.png"))
     if "relative_volume_bucket" in data.columns:
         paths.append(_bucket_plot(data, "relative_volume_bucket", "win_rate", out_path / "win_rate_by_relative_volume_bucket.png"))
+    if "leg_rsi_momentum_bucket" in data.columns:
+        paths.append(_bucket_plot(data, "leg_rsi_momentum_bucket", "win_rate", out_path / "win_rate_by_leg_rsi_momentum_bucket.png"))
+    if "leg_volume_bucket" in data.columns:
+        paths.append(_bucket_plot(data, "leg_volume_bucket", "win_rate", out_path / "win_rate_by_leg_volume_bucket.png"))
 
     return [p for p in paths if p.exists()]
 

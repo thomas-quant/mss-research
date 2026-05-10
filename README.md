@@ -6,6 +6,7 @@ Event-study tools for testing whether retail trading features predict near-term 
 - RSI divergences
 - volume divergences
 - MSS break parameters: trade-through vs close-through, momentum, relative volume, short-term vs intermediate-term structure
+- MSS leg context: volume across the impulse leg and direction-aligned RSI momentum across that leg
 
 Raw data and large generated output tables are intentionally ignored by git. Lightweight matplotlib figures in `outputs/figures/` are tracked so the README can show current research snapshots.
 
@@ -58,6 +59,10 @@ These figures are generated from the current local summary output and committed 
 
 ![Win rate by momentum bucket](outputs/figures/win_rate_by_momentum_bucket.png)
 
+![Win rate by MSS leg RSI momentum bucket](outputs/figures/win_rate_by_leg_rsi_momentum_bucket.png)
+
+![Win rate by MSS leg volume bucket](outputs/figures/win_rate_by_leg_volume_bucket.png)
+
 ![Win rate by relative volume bucket](outputs/figures/win_rate_by_relative_volume_bucket.png)
 
 ## Create graphs from existing summary
@@ -66,7 +71,7 @@ These figures are generated from the current local summary output and committed 
 PYTHONPATH=src python3 -m mss_research plots --summary outputs/summary.csv --out outputs/figures
 ```
 
-Graphs include win rate, mean aligned return, MSS P25/mean/P75 aligned-return distribution, sample size, momentum buckets, and relative-volume buckets.
+Graphs include win rate, mean aligned return, MSS P25/mean/P75 aligned-return distribution, sample size, break-candle momentum/volume buckets, and MSS-leg RSI/volume buckets.
 
 ## Tests
 
