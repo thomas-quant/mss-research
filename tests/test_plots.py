@@ -140,3 +140,18 @@ def test_summary_plots_include_time_of_day_and_session_volume_charts(tmp_path):
 
     assert "win_rate_by_time_of_day_session.png" in names
     assert "win_rate_by_session_and_leg_volume.png" in names
+
+
+def test_summary_plots_include_right_leg_mean_and_relative_momentum_charts(tmp_path):
+    summary = pd.DataFrame(
+        [
+            {"event_type": "mss", "swing_tier": "short", "closed_through": True, "horizon": 15, "n": 50, "win_rate": 0.55, "mean_aligned_return": 0.001, "right_leg_rsi_mean_bucket": "high", "leg_rsi_mean_delta_bucket": "strengthening"},
+            {"event_type": "mss", "swing_tier": "short", "closed_through": True, "horizon": 15, "n": 50, "win_rate": 0.45, "mean_aligned_return": -0.001, "right_leg_rsi_mean_bucket": "low", "leg_rsi_mean_delta_bucket": "weakening"},
+        ]
+    )
+
+    paths = create_summary_plots(summary, tmp_path)
+    names = {p.name for p in paths}
+
+    assert "win_rate_by_right_leg_rsi_mean_bucket.png" in names
+    assert "win_rate_by_leg_rsi_mean_delta_bucket.png" in names

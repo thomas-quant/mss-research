@@ -7,6 +7,7 @@ Event-study tools for testing whether retail trading features predict near-term 
 - volume divergences
 - MSS break parameters: trade-through vs close-through, momentum, relative volume, short-term vs intermediate-term structure
 - MSS leg context: volume across the impulse leg and direction-aligned RSI momentum across that leg
+- MSS leg momentum comparison: right-leg mean RSI, left-leg mean RSI, and right-minus-left momentum delta
 
 Raw data and large generated output tables are intentionally ignored by git. Lightweight matplotlib figures in `outputs/figures/` are tracked so the README can show current research snapshots.
 
@@ -76,6 +77,10 @@ These figures are generated from the current local summary output and committed 
 
 ![Win rate by MSS leg RSI momentum bucket](outputs/figures/win_rate_by_leg_rsi_momentum_bucket.png)
 
+![Win rate by right-leg mean RSI bucket](outputs/figures/win_rate_by_right_leg_rsi_mean_bucket.png)
+
+![Win rate by right-vs-left leg RSI momentum delta](outputs/figures/win_rate_by_leg_rsi_mean_delta_bucket.png)
+
 ![Win rate by MSS leg volume bucket](outputs/figures/win_rate_by_leg_volume_bucket.png)
 
 ![Win rate by relative volume bucket](outputs/figures/win_rate_by_relative_volume_bucket.png)
@@ -90,7 +95,7 @@ These figures are generated from the current local summary output and committed 
 PYTHONPATH=src python3 -m mss_research plots --summary outputs/summary.csv --out outputs/figures
 ```
 
-Graphs include win rate, mean aligned return, MSS P25/mean/P75 aligned-return distribution, sample size, break-candle momentum/volume buckets, and MSS-leg RSI/volume buckets, time-of-day sessions, and session-by-leg-volume heatmaps.
+Graphs include win rate, mean aligned return, MSS P25/mean/P75 aligned-return distribution, sample size, break-candle momentum/volume buckets, and MSS-leg RSI/volume buckets, right-leg mean RSI, right-vs-left RSI delta, time-of-day sessions, and session-by-leg-volume heatmaps.
 
 ## Tests
 

@@ -228,3 +228,27 @@ def test_mss_event_includes_time_of_day_session():
     events = detect_mss_events(df, tier="short", k=1)
 
     assert events.iloc[0]["event_session"] == "ny_am"
+
+
+def test_mss_event_includes_right_left_leg_rsi_mean_and_relative_momentum():
+    df = bars(
+        [15, 20, 16, 18, 17, 20.5],
+        lows=[14, 15, 10, 12, 11, 13],
+        closes=[14.5, 19, 11, 17, 16, 20.2],
+        volumes=[100] * 6,
+    )
+    df = detect_swings(df, k=1)
+    df = detect_intermediate_swings(df, k=1)
+    df = add_indicators(df, rsi_period=2, rolling_window=2)
+    df.loc[:, "rsi"] = [60, 70, 30, 55, 50, 75]
+
+    events = detect_mss_events(df, tier="short", k=1)
+    bullish = events[events["direction"] == 1].iloc[0]
+
+    assert bullish["leg_start_idx"] == 2
+    assert bullish["left_leg_start_idx"] == 1
+    assert bullish["right_leg_rsi_mean_aligned"] == pytest.approx((30 + 55 + 50 + 75) / 4)
+    assert bullish["left_leg_rsi_mean_aligned"] == pytest.approx(100 - ((70 + 30) / 2))
+    assert bullish["leg_rsi_mean_delta"] == pytest.approx(((30 + 55 + 50 + 75) / 4) - (100 - ((70 + 30) / 2)))
+    assert bullish["right_leg_rsi_mean_bucket"] == "low"
+    assert bullish["leg_rsi_mean_delta_bucket"] == "neutral"

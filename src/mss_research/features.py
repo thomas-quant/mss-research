@@ -344,37 +344,70 @@ def _event_row(
 
 
 def _leg_context(df: pd.DataFrame, event_idx: int, direction: int, leg_start_idx: int) -> dict:
-    """Context for the impulse leg that creates the MSS.
+    """Context for right MSS leg and prior left leg.
 
-    Bullish MSS leg starts at latest short-term swing low before the break.
-    Bearish MSS leg starts at latest short-term swing high before the break.
-    RSI is direction-aligned: high RSI for bullish, low RSI inverted as 100-RSI for bearish.
+    Right leg creates the MSS: extremity -> break bar.
+    Left leg precedes the extremity: prior opposite swing -> extremity.
+    RSI means are direction-aligned so higher always means stronger in that leg's direction.
     """
     leg_start_idx = int(max(0, min(leg_start_idx, event_idx)))
-    leg = df.iloc[leg_start_idx : event_idx + 1]
-    bar_count = int(len(leg))
-    leg_volume_sum = float(leg["Volume"].sum())
+    right_leg = df.iloc[leg_start_idx : event_idx + 1]
+    right_bar_count = int(len(right_leg))
+    leg_volume_sum = float(right_leg["Volume"].sum())
     baseline_volume = df.iloc[event_idx].get("rolling_volume_median", np.nan)
-    denom = float(baseline_volume) * bar_count if pd.notna(baseline_volume) and float(baseline_volume) > 0 else np.nan
+    denom = float(baseline_volume) * right_bar_count if pd.notna(baseline_volume) and float(baseline_volume) > 0 else np.nan
     leg_relative_volume = leg_volume_sum / denom if pd.notna(denom) and denom > 0 else np.nan
+
     if direction == 1:
-        leg_rsi_extreme = float(leg["rsi"].max()) if "rsi" in leg else np.nan
-        leg_rsi_aligned = leg_rsi_extreme
+        right_extreme = float(right_leg["rsi"].max()) if "rsi" in right_leg else np.nan
+        right_extreme_aligned = right_extreme
+        right_mean = float(right_leg["rsi"].mean()) if "rsi" in right_leg else np.nan
+        right_mean_aligned = right_mean
+        left_candidates = df.index[(df["swing_high"].astype(bool)) & (df.index < leg_start_idx)].to_list()
+        left_start_idx = int(left_candidates[-1]) if left_candidates else np.nan
     else:
-        leg_rsi_extreme = float(leg["rsi"].min()) if "rsi" in leg else np.nan
-        leg_rsi_aligned = 100.0 - leg_rsi_extreme if pd.notna(leg_rsi_extreme) else np.nan
+        right_extreme = float(right_leg["rsi"].min()) if "rsi" in right_leg else np.nan
+        right_extreme_aligned = 100.0 - right_extreme if pd.notna(right_extreme) else np.nan
+        right_mean = float(right_leg["rsi"].mean()) if "rsi" in right_leg else np.nan
+        right_mean_aligned = 100.0 - right_mean if pd.notna(right_mean) else np.nan
+        left_candidates = df.index[(df["swing_low"].astype(bool)) & (df.index < leg_start_idx)].to_list()
+        left_start_idx = int(left_candidates[-1]) if left_candidates else np.nan
+
+    if pd.notna(left_start_idx):
+        left_leg = df.iloc[int(left_start_idx) : leg_start_idx + 1]
+        left_mean = float(left_leg["rsi"].mean()) if "rsi" in left_leg else np.nan
+        # Prior leg direction is opposite the MSS shift direction.
+        left_mean_aligned = 100.0 - left_mean if direction == 1 and pd.notna(left_mean) else left_mean
+        if direction == -1 and pd.notna(left_mean):
+            left_mean_aligned = left_mean
+        left_bar_count = int(len(left_leg))
+    else:
+        left_mean = np.nan
+        left_mean_aligned = np.nan
+        left_bar_count = 0
+
+    leg_rsi_mean_delta = right_mean_aligned - left_mean_aligned if pd.notna(right_mean_aligned) and pd.notna(left_mean_aligned) else np.nan
     start_close = float(df.iloc[leg_start_idx]["Close"])
     end_close = float(df.iloc[event_idx]["Close"])
     leg_aligned_return = direction * (end_close / start_close - 1.0) if start_close else np.nan
     return {
         "leg_start_idx": leg_start_idx,
-        "leg_bar_count": bar_count,
+        "leg_bar_count": right_bar_count,
         "leg_volume_sum": leg_volume_sum,
         "leg_relative_volume": leg_relative_volume,
         "leg_volume_bucket": _bucket_value(leg_relative_volume, (0.8, 1.2), ("low", "normal", "high")),
-        "leg_rsi_extreme": leg_rsi_extreme,
-        "leg_rsi_aligned": leg_rsi_aligned,
-        "leg_rsi_momentum_bucket": _bucket_value(leg_rsi_aligned, (55.0, 65.0), ("low", "medium", "high")),
+        "leg_rsi_extreme": right_extreme,
+        "leg_rsi_aligned": right_extreme_aligned,
+        "leg_rsi_momentum_bucket": _bucket_value(right_extreme_aligned, (55.0, 65.0), ("low", "medium", "high")),
+        "right_leg_rsi_mean": right_mean,
+        "right_leg_rsi_mean_aligned": right_mean_aligned,
+        "right_leg_rsi_mean_bucket": _bucket_value(right_mean_aligned, (55.0, 65.0), ("low", "medium", "high")),
+        "left_leg_start_idx": left_start_idx,
+        "left_leg_bar_count": left_bar_count,
+        "left_leg_rsi_mean": left_mean,
+        "left_leg_rsi_mean_aligned": left_mean_aligned,
+        "leg_rsi_mean_delta": leg_rsi_mean_delta,
+        "leg_rsi_mean_delta_bucket": _bucket_value(leg_rsi_mean_delta, (-5.0, 5.0), ("weakening", "neutral", "strengthening")),
         "leg_aligned_return": leg_aligned_return,
     }
 
@@ -473,6 +506,8 @@ def summarize_events(events: pd.DataFrame, horizons: Iterable[int], bootstrap_it
             "broken_swing_volume_divergence",
             "leg_rsi_momentum_bucket",
             "leg_volume_bucket",
+            "right_leg_rsi_mean_bucket",
+            "leg_rsi_mean_delta_bucket",
         ]
         if c in events.columns
     ]
