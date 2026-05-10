@@ -125,3 +125,18 @@ def test_leg_bucket_plots_exclude_nan_bucket_rows(tmp_path):
 
     assert (tmp_path / "win_rate_by_leg_rsi_momentum_bucket.png").exists()
     assert (tmp_path / "win_rate_by_leg_volume_bucket.png").exists()
+
+
+def test_summary_plots_include_time_of_day_and_session_volume_charts(tmp_path):
+    summary = pd.DataFrame(
+        [
+            {"event_session": "ny_am", "event_type": "mss", "swing_tier": "short", "closed_through": True, "horizon": 15, "n": 50, "win_rate": 0.55, "mean_aligned_return": 0.001, "leg_volume_bucket": "high"},
+            {"event_session": "london", "event_type": "mss", "swing_tier": "short", "closed_through": True, "horizon": 15, "n": 50, "win_rate": 0.45, "mean_aligned_return": -0.001, "leg_volume_bucket": "low"},
+        ]
+    )
+
+    paths = create_summary_plots(summary, tmp_path)
+    names = {p.name for p in paths}
+
+    assert "win_rate_by_time_of_day_session.png" in names
+    assert "win_rate_by_session_and_leg_volume.png" in names

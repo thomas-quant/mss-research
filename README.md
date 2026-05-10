@@ -29,6 +29,17 @@ datetime_utc, Open, High, Low, Close, Volume
 
 Bullish MSS only counts when price breaks a swing high that is left of the lowest swing-low extremity in the displacement leg. A swing high formed after that low is not eligible as the bullish shift level. Bearish MSS mirrors this: the broken swing low must be left of the highest swing-high extremity.
 
+
+## Time-of-day sessions
+
+Events are bucketed by America/New_York clock time:
+
+- `asia`: 18:00-00:00 ET
+- `london`: 02:00-05:00 ET
+- `ny_am`: 08:30-12:00 ET
+- `ny_pm`: 13:30-16:00 ET
+- `other`: all remaining bars
+
 ## Run study
 
 ```bash
@@ -69,13 +80,17 @@ These figures are generated from the current local summary output and committed 
 
 ![Win rate by relative volume bucket](outputs/figures/win_rate_by_relative_volume_bucket.png)
 
+![Win rate by time-of-day session](outputs/figures/win_rate_by_time_of_day_session.png)
+
+![Win rate by session and MSS leg volume](outputs/figures/win_rate_by_session_and_leg_volume.png)
+
 ## Create graphs from existing summary
 
 ```bash
 PYTHONPATH=src python3 -m mss_research plots --summary outputs/summary.csv --out outputs/figures
 ```
 
-Graphs include win rate, mean aligned return, MSS P25/mean/P75 aligned-return distribution, sample size, break-candle momentum/volume buckets, and MSS-leg RSI/volume buckets.
+Graphs include win rate, mean aligned return, MSS P25/mean/P75 aligned-return distribution, sample size, break-candle momentum/volume buckets, and MSS-leg RSI/volume buckets, time-of-day sessions, and session-by-leg-volume heatmaps.
 
 ## Tests
 

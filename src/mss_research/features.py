@@ -2,11 +2,40 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
 
 OHLCV = ["Open", "High", "Low", "Close", "Volume"]
+
+
+NY_TZ = ZoneInfo("America/New_York")
+
+
+def assign_time_of_day_session(timestamp: pd.Timestamp) -> str:
+    """Assign ICT-style session bucket using America/New_York clock time.
+
+    asia: 18:00-00:00 ET
+    london: 02:00-05:00 ET
+    ny_am: 08:30-12:00 ET
+    ny_pm: 13:30-16:00 ET
+    other: everything else
+    """
+    ts = pd.Timestamp(timestamp)
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    local = ts.tz_convert(NY_TZ)
+    minutes = local.hour * 60 + local.minute
+    if 18 * 60 <= minutes or minutes < 0:
+        return "asia"
+    if 2 * 60 <= minutes < 5 * 60:
+        return "london"
+    if 8 * 60 + 30 <= minutes < 12 * 60:
+        return "ny_am"
+    if 13 * 60 + 30 <= minutes < 16 * 60:
+        return "ny_pm"
+    return "other"
 
 
 @dataclass(frozen=True)
@@ -297,6 +326,7 @@ def _event_row(
         "event_type": "mss",
         "event_idx": int(i),
         "datetime_utc": row["datetime_utc"],
+        "event_session": assign_time_of_day_session(row["datetime_utc"]),
         "direction": int(direction),
         "swing_tier": tier,
         "broken_swing_idx": int(swing_idx),
@@ -370,6 +400,7 @@ def divergence_events(df: pd.DataFrame, divergence_type: str) -> pd.DataFrame:
                 "event_type": f"{divergence_type}_divergence",
                 "event_idx": int(i),
                 "datetime_utc": row["datetime_utc"],
+                "event_session": assign_time_of_day_session(row["datetime_utc"]),
                 "direction": int(row[col]),
                 "swing_tier": "short",
                 "closed_through": np.nan,
@@ -433,6 +464,7 @@ def summarize_events(events: pd.DataFrame, horizons: Iterable[int], bootstrap_it
             "instrument",
             "timeframe",
             "event_type",
+            "event_session",
             "swing_tier",
             "closed_through",
             "momentum_bucket",

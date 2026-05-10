@@ -77,6 +77,10 @@ def create_summary_plots(summary: pd.DataFrame, out_dir: Path | str) -> list[Pat
         paths.append(_bucket_plot(data, "leg_rsi_momentum_bucket", "win_rate", out_path / "win_rate_by_leg_rsi_momentum_bucket.png"))
     if "leg_volume_bucket" in data.columns:
         paths.append(_bucket_plot(data, "leg_volume_bucket", "win_rate", out_path / "win_rate_by_leg_volume_bucket.png"))
+    if "event_session" in data.columns:
+        paths.append(_bucket_plot(data, "event_session", "win_rate", out_path / "win_rate_by_time_of_day_session.png"))
+    if "event_session" in data.columns and "leg_volume_bucket" in data.columns:
+        paths.append(_session_volume_heatmap(data, out_path / "win_rate_by_session_and_leg_volume.png"))
 
     return [p for p in paths if p.exists()]
 
@@ -138,6 +142,41 @@ def _bucket_plot(data: pd.DataFrame, bucket_col: str, y_col: str, path: Path) ->
     return path
 
 
+def _session_volume_heatmap(data: pd.DataFrame, path: Path) -> Path:
+    filtered = data[(data["event_type"] == "mss") if "event_type" in data.columns else True].dropna(subset=["event_session", "leg_volume_bucket"])
+    rows = []
+    for (session, volume_bucket), group in filtered.groupby(["event_session", "leg_volume_bucket"], dropna=False):
+        weights = group["n"].astype(float)
+        if weights.sum() <= 0:
+            continue
+        values = group["win_rate"].astype(float)
+        rows.append({"event_session": str(session), "leg_volume_bucket": str(volume_bucket), "win_rate": float((values * weights).sum() / weights.sum())})
+    heat = pd.DataFrame(rows)
+    if heat.empty:
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.set_axis_off()
+        ax.text(0.5, 0.5, "No MSS session/volume data", ha="center", va="center")
+    else:
+        session_order = [s for s in ["asia", "london", "ny_am", "ny_pm", "other"] if s in set(heat["event_session"])]
+        volume_order = [v for v in ["low", "normal", "high"] if v in set(heat["leg_volume_bucket"])]
+        pivot = heat.pivot(index="event_session", columns="leg_volume_bucket", values="win_rate").reindex(index=session_order, columns=volume_order)
+        fig, ax = plt.subplots(figsize=(8, 5))
+        image = ax.imshow(pivot.to_numpy(dtype=float), vmin=0.4, vmax=0.6, cmap="RdYlGn", aspect="auto")
+        ax.set_xticks(range(len(pivot.columns)), pivot.columns)
+        ax.set_yticks(range(len(pivot.index)), pivot.index)
+        ax.set_title("MSS win rate by session and leg-volume bucket")
+        for y in range(len(pivot.index)):
+            for x in range(len(pivot.columns)):
+                val = pivot.iloc[y, x]
+                if pd.notna(val):
+                    ax.text(x, y, f"{val:.1%}", ha="center", va="center", fontsize=9)
+        fig.colorbar(image, ax=ax, label="Win rate")
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
+
+
 def create_mss_distribution_plot(events: pd.DataFrame, out_dir: Path | str, horizons: list[int] | tuple[int, ...] | None = None) -> Path:
     """Plot MSS aligned-return P25/mean/P75 by horizon and structure subtype."""
     required = {"event_type", "swing_tier", "closed_through"}
@@ -189,6 +228,41 @@ def create_mss_distribution_plot(events: pd.DataFrame, out_dir: Path | str, hori
     ax.set_title("MSS aligned-return distribution: P25 / mean / P75")
     ax.grid(True, alpha=0.25)
     ax.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
+
+
+def _session_volume_heatmap(data: pd.DataFrame, path: Path) -> Path:
+    filtered = data[(data["event_type"] == "mss") if "event_type" in data.columns else True].dropna(subset=["event_session", "leg_volume_bucket"])
+    rows = []
+    for (session, volume_bucket), group in filtered.groupby(["event_session", "leg_volume_bucket"], dropna=False):
+        weights = group["n"].astype(float)
+        if weights.sum() <= 0:
+            continue
+        values = group["win_rate"].astype(float)
+        rows.append({"event_session": str(session), "leg_volume_bucket": str(volume_bucket), "win_rate": float((values * weights).sum() / weights.sum())})
+    heat = pd.DataFrame(rows)
+    if heat.empty:
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.set_axis_off()
+        ax.text(0.5, 0.5, "No MSS session/volume data", ha="center", va="center")
+    else:
+        session_order = [s for s in ["asia", "london", "ny_am", "ny_pm", "other"] if s in set(heat["event_session"])]
+        volume_order = [v for v in ["low", "normal", "high"] if v in set(heat["leg_volume_bucket"])]
+        pivot = heat.pivot(index="event_session", columns="leg_volume_bucket", values="win_rate").reindex(index=session_order, columns=volume_order)
+        fig, ax = plt.subplots(figsize=(8, 5))
+        image = ax.imshow(pivot.to_numpy(dtype=float), vmin=0.4, vmax=0.6, cmap="RdYlGn", aspect="auto")
+        ax.set_xticks(range(len(pivot.columns)), pivot.columns)
+        ax.set_yticks(range(len(pivot.index)), pivot.index)
+        ax.set_title("MSS win rate by session and leg-volume bucket")
+        for y in range(len(pivot.index)):
+            for x in range(len(pivot.columns)):
+                val = pivot.iloc[y, x]
+                if pd.notna(val):
+                    ax.text(x, y, f"{val:.1%}", ha="center", va="center", fontsize=9)
+        fig.colorbar(image, ax=ax, label="Win rate")
     fig.tight_layout()
     fig.savefig(path, dpi=160)
     plt.close(fig)

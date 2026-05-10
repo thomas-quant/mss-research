@@ -194,3 +194,37 @@ def test_bullish_mss_breaks_high_left_of_low_extremity_not_post_low_swing_high()
     assert bullish["event_idx"].tolist() == [6]
     assert bullish.iloc[0]["broken_swing_idx"] == 1
     assert bullish.iloc[0]["leg_start_idx"] == 2
+
+
+def test_assigns_ict_style_time_of_day_sessions_in_new_york_time():
+    from mss_research.features import assign_time_of_day_session
+
+    times = pd.to_datetime(
+        [
+            "2024-01-02 02:00:00Z",  # 21:00 prior day NY
+            "2024-01-02 08:00:00Z",  # 03:00 NY
+            "2024-01-02 14:30:00Z",  # 09:30 NY
+            "2024-01-02 19:00:00Z",  # 14:00 NY
+            "2024-01-02 22:00:00Z",  # 17:00 NY
+        ]
+    )
+
+    assert [assign_time_of_day_session(t) for t in times] == ["asia", "london", "ny_am", "ny_pm", "other"]
+
+
+def test_mss_event_includes_time_of_day_session():
+    df = bars(
+        [10, 12, 11, 12.5, 13.0, 11],
+        lows=[9, 10, 9, 11, 12, 10],
+        closes=[9.5, 11.5, 10.5, 11.8, 12.6, 10.5],
+        opens=[9.5, 11, 11, 11.6, 12, 12],
+        volumes=[100, 100, 100, 200, 300, 100],
+    )
+    df["datetime_utc"] = pd.date_range("2024-01-02 14:27:00Z", periods=len(df), freq="min")
+    df = detect_swings(df, k=1)
+    df = detect_intermediate_swings(df, k=1)
+    df = add_indicators(df, rsi_period=2, rolling_window=2)
+
+    events = detect_mss_events(df, tier="short", k=1)
+
+    assert events.iloc[0]["event_session"] == "ny_am"
