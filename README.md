@@ -7,7 +7,7 @@ Event-study tools for testing whether retail trading features predict near-term 
 - volume divergences
 - MSS break parameters: trade-through vs close-through, momentum, relative volume, short-term vs intermediate-term structure
 
-Raw data and generated outputs are intentionally ignored by git.
+Raw data and large generated output tables are intentionally ignored by git. Lightweight matplotlib figures in `outputs/figures/` are tracked so the README can show current research snapshots.
 
 ## Data
 
@@ -43,6 +43,20 @@ outputs/all_events.parquet
 outputs/summary.csv
 outputs/figures/*.png
 ```
+
+## Current graphs
+
+These figures are generated from the current local summary output and committed because they are small. Recreate them with the `plots` command below.
+
+![Win rate by event type](outputs/figures/win_rate_by_event_type.png)
+
+![Mean aligned return by event type](outputs/figures/mean_return_by_event_type.png)
+
+![Sample size by event type](outputs/figures/sample_size_by_event_type.png)
+
+![Win rate by momentum bucket](outputs/figures/win_rate_by_momentum_bucket.png)
+
+![Win rate by relative volume bucket](outputs/figures/win_rate_by_relative_volume_bucket.png)
 
 ## Create graphs from existing summary
 

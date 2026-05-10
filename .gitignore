@@ -10,7 +10,9 @@ __pycache__/
 .venv/
 venv/
 
-# Research outputs
-outputs/
+# Research outputs: keep large tables local, allow lightweight figures in README
+outputs/*
+!outputs/figures/
+!outputs/figures/*.png
 reports/
 *.log
