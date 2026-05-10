@@ -1,4 +1,5 @@
 import pandas as pd
+import polars as pl
 import pytest
 
 from mss_research.features import (
@@ -9,6 +10,17 @@ from mss_research.features import (
     label_forward_returns,
     resample_ohlcv,
 )
+
+
+def as_pd(df):
+    return df.to_pandas() if hasattr(df, "to_pandas") else df
+
+
+def set_col(df, name, values):
+    if isinstance(df, pl.DataFrame):
+        return df.with_columns(pl.Series(name, values))
+    df.loc[:, name] = values
+    return df
 
 
 def bars(highs, lows=None, closes=None, opens=None, volumes=None):
@@ -35,7 +47,7 @@ def test_resample_ohlcv_aggregates_standard_fields():
     out = resample_ohlcv(df, "5min")
 
     assert len(out) == 1
-    row = out.iloc[0]
+    row = as_pd(out).iloc[0]
     assert row["Open"] == 9
     assert row["High"] == 15
     assert row["Low"] == 8
@@ -48,10 +60,11 @@ def test_detect_swings_marks_strict_fractal_highs_and_lows():
 
     out = detect_swings(df, k=1)
 
-    assert out["swing_high"].tolist() == [False, True, False, True, False]
-    assert out["swing_low"].tolist() == [False, False, True, False, False]
-    assert out.loc[1, "swing_high_available_idx"] == 2
-    assert pd.isna(out.loc[4, "swing_high_available_idx"])
+    out_pd = as_pd(out)
+    assert out_pd["swing_high"].tolist() == [False, True, False, True, False]
+    assert out_pd["swing_low"].tolist() == [False, False, True, False, False]
+    assert out_pd.loc[1, "swing_high_available_idx"] == 2
+    assert pd.isna(out_pd.loc[4, "swing_high_available_idx"])
 
 
 def test_detect_intermediate_swings_uses_swing_of_swings_prominence():
@@ -63,10 +76,11 @@ def test_detect_intermediate_swings_uses_swing_of_swings_prominence():
 
     out = detect_intermediate_swings(st, k=1)
 
-    assert out["intermediate_swing_high"].tolist() == [False, False, False, True, False, False, False, False]
-    assert out["intermediate_swing_low"].tolist() == [False, False, False, False, True, False, False, False]
-    assert out.loc[3, "intermediate_swing_high_available_idx"] == 6
-    assert out.loc[4, "intermediate_swing_low_available_idx"] == 7
+    out_pd = as_pd(out)
+    assert out_pd["intermediate_swing_high"].tolist() == [False, False, False, True, False, False, False, False]
+    assert out_pd["intermediate_swing_low"].tolist() == [False, False, False, False, True, False, False, False]
+    assert out_pd.loc[3, "intermediate_swing_high_available_idx"] == 6
+    assert out_pd.loc[4, "intermediate_swing_low_available_idx"] == 7
 
 
 def test_detect_mss_events_distinguishes_trade_and_close_breaks_and_waits_for_confirmation():
@@ -83,10 +97,10 @@ def test_detect_mss_events_distinguishes_trade_and_close_breaks_and_waits_for_co
 
     events = detect_mss_events(df, tier="short", k=1)
 
-    bullish = events[events["direction"] == 1].iloc[0]
+    bullish = as_pd(events).query("direction == 1").iloc[0]
     assert bullish["event_idx"] == 3
-    assert bullish["traded_through"] is True
-    assert bullish["closed_through"] is False
+    assert bullish["traded_through"] == True
+    assert bullish["closed_through"] == False
     assert bullish["broken_swing_idx"] == 1
 
 
@@ -101,12 +115,13 @@ def test_label_forward_returns_aligns_with_signal_direction():
 
     out = label_forward_returns(events, df, horizons=[1])
 
-    assert out.loc[0, "fwd_return_1"] == pytest.approx(0.2)
-    assert out.loc[0, "aligned_return_1"] == pytest.approx(0.2)
-    assert out.loc[0, "win_1"] is True
-    assert out.loc[1, "fwd_return_1"] == pytest.approx(-0.25)
-    assert out.loc[1, "aligned_return_1"] == pytest.approx(0.25)
-    assert out.loc[1, "win_1"] is True
+    out_pd = as_pd(out)
+    assert out_pd.loc[0, "fwd_return_1"] == pytest.approx(0.2)
+    assert out_pd.loc[0, "aligned_return_1"] == pytest.approx(0.2)
+    assert out_pd.loc[0, "win_1"] == True
+    assert out_pd.loc[1, "fwd_return_1"] == pytest.approx(-0.25)
+    assert out_pd.loc[1, "aligned_return_1"] == pytest.approx(0.25)
+    assert out_pd.loc[1, "win_1"] == True
 
 
 def test_intermediate_mss_waits_until_after_prominence_confirmation_bar():
@@ -121,7 +136,7 @@ def test_intermediate_mss_waits_until_after_prominence_confirmation_bar():
 
     events = detect_mss_events(df, tier="intermediate", k=1)
 
-    bullish = events[events["direction"] == 1].iloc[0]
+    bullish = as_pd(events).query("direction == 1").iloc[0]
     assert bullish["broken_swing_idx"] == 3
     assert bullish["event_idx"] == 7
 
@@ -147,8 +162,9 @@ def test_summarize_events_includes_p25_and_p75_aligned_returns():
 
     summary = summarize_events(events, horizons=[5], bootstrap_iterations=5)
 
-    assert summary.loc[0, "p25_aligned_return"] == pytest.approx(-0.0125)
-    assert summary.loc[0, "p75_aligned_return"] == pytest.approx(0.0175)
+    summary_pd = as_pd(summary)
+    assert summary_pd.loc[0, "p25_aligned_return"] == pytest.approx(-0.0125)
+    assert summary_pd.loc[0, "p75_aligned_return"] == pytest.approx(0.0175)
 
 
 def test_bootstrap_ci_preserves_seeded_sampling_sequence():
@@ -178,7 +194,7 @@ def test_summarize_events_groups_by_leg_relative_volume_delta_bucket():
 
     summary = summarize_events(events, horizons=[5], bootstrap_iterations=5)
 
-    assert set(summary["leg_relative_volume_delta_bucket"]) == {"expanding", "contracting"}
+    assert set(as_pd(summary)["leg_relative_volume_delta_bucket"]) == {"expanding", "contracting"}
 
 
 def test_mss_event_includes_leg_volume_and_rsi_momentum_context():
@@ -192,11 +208,11 @@ def test_mss_event_includes_leg_volume_and_rsi_momentum_context():
     df = detect_swings(df, k=1)
     df = detect_intermediate_swings(df, k=1)
     df = add_indicators(df, rsi_period=2, rolling_window=2)
-    df.loc[:, "rsi"] = [50, 55, 35, 72, 68, 45]
+    df = set_col(df, "rsi", [50, 55, 35, 72, 68, 45])
 
     events = detect_mss_events(df, tier="short", k=1)
 
-    bullish = events[events["direction"] == 1].iloc[0]
+    bullish = as_pd(events).query("direction == 1").iloc[0]
     assert bullish["leg_start_idx"] == 2
     assert bullish["leg_bar_count"] == 2
     assert bullish["leg_volume_sum"] == 300
@@ -219,7 +235,7 @@ def test_bullish_mss_breaks_high_left_of_low_extremity_not_post_low_swing_high()
     df = add_indicators(df, rsi_period=2, rolling_window=2)
 
     events = detect_mss_events(df, tier="short", k=1)
-    bullish = events[events["direction"] == 1]
+    bullish = as_pd(events).query("direction == 1")
 
     assert bullish["event_idx"].tolist() == [6]
     assert bullish.iloc[0]["broken_swing_idx"] == 1
@@ -257,7 +273,7 @@ def test_mss_event_includes_time_of_day_session():
 
     events = detect_mss_events(df, tier="short", k=1)
 
-    assert events.iloc[0]["event_session"] == "ny_am"
+    assert as_pd(events).iloc[0]["event_session"] == "ny_am"
 
 
 def test_mss_event_includes_right_left_leg_rsi_mean_and_relative_momentum():
@@ -270,10 +286,10 @@ def test_mss_event_includes_right_left_leg_rsi_mean_and_relative_momentum():
     df = detect_swings(df, k=1)
     df = detect_intermediate_swings(df, k=1)
     df = add_indicators(df, rsi_period=2, rolling_window=2)
-    df.loc[:, "rsi"] = [60, 70, 30, 55, 50, 75]
+    df = set_col(df, "rsi", [60, 70, 30, 55, 50, 75])
 
     events = detect_mss_events(df, tier="short", k=1)
-    bullish = events[events["direction"] == 1].iloc[0]
+    bullish = as_pd(events).query("direction == 1").iloc[0]
 
     assert bullish["leg_start_idx"] == 2
     assert bullish["left_leg_start_idx"] == 1
@@ -294,10 +310,10 @@ def test_mss_event_includes_right_left_leg_relative_volume_delta():
     df = detect_swings(df, k=1)
     df = detect_intermediate_swings(df, k=1)
     df = add_indicators(df, rsi_period=2, rolling_window=2)
-    df.loc[:, "rsi"] = [60, 70, 30, 55, 50, 75]
+    df = set_col(df, "rsi", [60, 70, 30, 55, 50, 75])
 
     events = detect_mss_events(df, tier="short", k=1)
-    bullish = events[events["direction"] == 1].iloc[0]
+    bullish = as_pd(events).query("direction == 1").iloc[0]
 
     assert bullish["leg_start_idx"] == 2
     assert bullish["left_leg_start_idx"] == 1

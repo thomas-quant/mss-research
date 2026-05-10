@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 
 from .features import (
     StudyConfig,
@@ -22,10 +22,10 @@ def instrument_from_path(path: Path) -> str:
     return path.stem.split("_")[0].upper()
 
 
-def run_file(path: Path, out_dir: Path, config: StudyConfig = StudyConfig()) -> tuple[pd.DataFrame, pd.DataFrame]:
-    raw = pd.read_parquet(path)
+def run_file(path: Path, out_dir: Path, config: StudyConfig = StudyConfig()) -> tuple[pl.DataFrame, pl.DataFrame]:
+    raw = pl.read_parquet(path)
     instrument = instrument_from_path(path)
-    all_events = []
+    all_events: list[pl.DataFrame] = []
 
     for timeframe in config.timeframes:
         bars = resample_ohlcv(raw, timeframe)
@@ -39,30 +39,25 @@ def run_file(path: Path, out_dir: Path, config: StudyConfig = StudyConfig()) -> 
             events.append(detect_mss_events(bars, tier=tier, k=config.swing_k))
         events.append(divergence_events(bars, "rsi"))
         events.append(divergence_events(bars, "volume"))
-        events = [e for e in events if not e.empty]
+        events = [e for e in events if not e.is_empty()]
         if not events:
             continue
-        frame = pd.concat(events, ignore_index=True, sort=False)
-        frame.insert(0, "instrument", instrument)
-        frame.insert(1, "timeframe", timeframe)
+        frame = pl.concat(events, how="diagonal_relaxed")
+        frame = frame.with_columns(pl.lit(instrument).alias("instrument"), pl.lit(timeframe).alias("timeframe"))
+        frame = frame.select(["instrument", "timeframe", *[c for c in frame.columns if c not in {"instrument", "timeframe"}]])
         frame = label_forward_returns(frame, bars, config.horizons)
         all_events.append(frame)
 
-    if all_events:
-        events_out = pd.concat(all_events, ignore_index=True, sort=False)
-    else:
-        events_out = pd.DataFrame()
+    events_out = pl.concat(all_events, how="diagonal_relaxed") if all_events else pl.DataFrame()
     summary = summarize_events(events_out, config.horizons, config.bootstrap_iterations, config.random_seed)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    events_path = out_dir / f"{instrument.lower()}_events.parquet"
-    summary_path = out_dir / f"{instrument.lower()}_summary.csv"
-    events_out.to_parquet(events_path, index=False)
-    summary.to_csv(summary_path, index=False)
+    events_out.write_parquet(out_dir / f"{instrument.lower()}_events.parquet")
+    summary.write_csv(out_dir / f"{instrument.lower()}_summary.csv")
     return events_out, summary
 
 
-def run_directory(data_dir: Path, out_dir: Path, config: StudyConfig = StudyConfig()) -> tuple[pd.DataFrame, pd.DataFrame]:
+def run_directory(data_dir: Path, out_dir: Path, config: StudyConfig = StudyConfig()) -> tuple[pl.DataFrame, pl.DataFrame]:
     paths = sorted(data_dir.glob("*.parquet"))
     if not paths:
         raise FileNotFoundError(f"no parquet files found in {data_dir}")
@@ -72,8 +67,8 @@ def run_directory(data_dir: Path, out_dir: Path, config: StudyConfig = StudyConf
         e, s = run_file(path, out_dir, config)
         events.append(e)
         summaries.append(s)
-    events_all = pd.concat(events, ignore_index=True, sort=False) if events else pd.DataFrame()
-    summary_all = pd.concat(summaries, ignore_index=True, sort=False) if summaries else pd.DataFrame()
-    events_all.to_parquet(out_dir / "all_events.parquet", index=False)
-    summary_all.to_csv(out_dir / "summary.csv", index=False)
+    events_all = pl.concat(events, how="diagonal_relaxed") if events else pl.DataFrame()
+    summary_all = pl.concat(summaries, how="diagonal_relaxed") if summaries else pl.DataFrame()
+    events_all.write_parquet(out_dir / "all_events.parquet")
+    summary_all.write_csv(out_dir / "summary.csv")
     return events_all, summary_all

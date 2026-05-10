@@ -7,9 +7,15 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
+import polars as pl
+
+
+def _as_pandas(df):
+    return df.to_pandas() if isinstance(df, pl.DataFrame) else df
 
 
 def _clean_summary(summary: pd.DataFrame) -> pd.DataFrame:
+    summary = _as_pandas(summary)
     required = {"event_type", "horizon", "n", "win_rate", "mean_aligned_return"}
     missing = required - set(summary.columns)
     if missing:
@@ -185,6 +191,7 @@ def _session_volume_heatmap(data: pd.DataFrame, path: Path) -> Path:
 
 def create_mss_distribution_plot(events: pd.DataFrame, out_dir: Path | str, horizons: list[int] | tuple[int, ...] | None = None) -> Path:
     """Plot MSS aligned-return P25/mean/P75 by horizon and structure subtype."""
+    events = _as_pandas(events)
     required = {"event_type", "swing_tier", "closed_through"}
     missing = required - set(events.columns)
     if missing:
@@ -276,8 +283,8 @@ def _session_volume_heatmap(data: pd.DataFrame, path: Path) -> Path:
 
 
 def create_mss_distribution_plot_from_parquet(events_parquet: Path | str, out_dir: Path | str) -> Path:
-    return create_mss_distribution_plot(pd.read_parquet(events_parquet), out_dir)
+    return create_mss_distribution_plot(pl.read_parquet(events_parquet), out_dir)
 
 
 def create_summary_plots_from_csv(summary_csv: Path | str, out_dir: Path | str) -> list[Path]:
-    return create_summary_plots(pd.read_csv(summary_csv), out_dir)
+    return create_summary_plots(pl.read_csv(summary_csv).to_pandas(), out_dir)

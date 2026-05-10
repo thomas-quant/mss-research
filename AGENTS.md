@@ -37,7 +37,7 @@ Small matplotlib figures under `outputs/figures/*.png` are tracked and embedded 
 
 ## Current package and commands
 
-Code lives in `src/mss_research/`.
+Code lives in `src/mss_research/`. The core research pipeline uses Polars for data processing and parquet/CSV I/O; plot code may convert to pandas at the matplotlib boundary.
 
 Main CLI:
 

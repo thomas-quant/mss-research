@@ -1,6 +1,6 @@
 # MSS Research
 
-Event-study tools for testing whether retail trading features predict near-term market direction:
+Polars-based event-study tools for testing whether retail trading features predict near-term market direction:
 
 - market structure shifts (MSS)
 - RSI divergences
@@ -10,7 +10,7 @@ Event-study tools for testing whether retail trading features predict near-term 
 - MSS leg momentum comparison: right-leg mean RSI, left-leg mean RSI, and right-minus-left momentum delta
 - MSS leg volume comparison: right-leg relative volume, left-leg relative volume, and right-minus-left volume delta
 
-Raw data and large generated output tables are intentionally ignored by git. Lightweight matplotlib figures in `outputs/figures/` are tracked so the README can show current research snapshots.
+Raw data and large generated output tables are intentionally ignored by git. Lightweight matplotlib figures in `outputs/figures/` are tracked so the README can show current research snapshots. The core research pipeline uses Polars; plotting still converts to pandas at the matplotlib boundary.
 
 ## Data
 
