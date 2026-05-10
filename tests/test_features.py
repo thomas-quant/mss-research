@@ -151,6 +151,36 @@ def test_summarize_events_includes_p25_and_p75_aligned_returns():
     assert summary.loc[0, "p75_aligned_return"] == pytest.approx(0.0175)
 
 
+def test_bootstrap_ci_preserves_seeded_sampling_sequence():
+    from mss_research.features import bootstrap_ci
+
+    lo, hi = bootstrap_ci(pd.Series([0.0, 1.0, 1.0, 0.0]), iterations=5, seed=7, statistic="mean")
+
+    assert lo == pytest.approx(0.25)
+    assert hi == pytest.approx(0.5)
+
+
+def test_summarize_events_groups_by_leg_relative_volume_delta_bucket():
+    from mss_research.features import summarize_events
+
+    events = pd.DataFrame(
+        {
+            "instrument": ["ES", "ES"],
+            "timeframe": ["5min", "5min"],
+            "event_type": ["mss", "mss"],
+            "swing_tier": ["short", "short"],
+            "closed_through": [True, True],
+            "leg_relative_volume_delta_bucket": ["expanding", "contracting"],
+            "aligned_return_5": [0.02, -0.01],
+            "win_5": [True, False],
+        }
+    )
+
+    summary = summarize_events(events, horizons=[5], bootstrap_iterations=5)
+
+    assert set(summary["leg_relative_volume_delta_bucket"]) == {"expanding", "contracting"}
+
+
 def test_mss_event_includes_leg_volume_and_rsi_momentum_context():
     df = bars(
         [10, 12, 11, 12.5, 13.0, 11],
@@ -252,3 +282,50 @@ def test_mss_event_includes_right_left_leg_rsi_mean_and_relative_momentum():
     assert bullish["leg_rsi_mean_delta"] == pytest.approx(((30 + 55 + 50 + 75) / 4) - (100 - ((70 + 30) / 2)))
     assert bullish["right_leg_rsi_mean_bucket"] == "low"
     assert bullish["leg_rsi_mean_delta_bucket"] == "neutral"
+
+
+def test_mss_event_includes_right_left_leg_relative_volume_delta():
+    df = bars(
+        [15, 20, 16, 18, 17, 20.5],
+        lows=[14, 15, 10, 12, 11, 13],
+        closes=[14.5, 19, 11, 17, 16, 20.2],
+        volumes=[100, 200, 300, 600, 600, 600],
+    )
+    df = detect_swings(df, k=1)
+    df = detect_intermediate_swings(df, k=1)
+    df = add_indicators(df, rsi_period=2, rolling_window=2)
+    df.loc[:, "rsi"] = [60, 70, 30, 55, 50, 75]
+
+    events = detect_mss_events(df, tier="short", k=1)
+    bullish = events[events["direction"] == 1].iloc[0]
+
+    assert bullish["leg_start_idx"] == 2
+    assert bullish["left_leg_start_idx"] == 1
+    assert bullish["left_leg_bar_count"] == 2
+    assert bullish["left_leg_volume_sum"] == 500
+    assert bullish["leg_volume_sum"] == 2100
+    assert bullish["left_leg_relative_volume"] == pytest.approx(500 / (600 * 2))
+    assert bullish["leg_relative_volume"] == pytest.approx(2100 / (600 * 4))
+    assert bullish["leg_relative_volume_delta"] == pytest.approx((2100 / (600 * 4)) - (500 / (600 * 2)))
+    assert bullish["leg_relative_volume_delta_bucket"] == "expanding"
+
+
+def test_mss_event_volume_delta_is_nan_without_prior_left_leg():
+    from mss_research.features import _leg_context
+
+    df = bars(
+        [10, 11, 12],
+        lows=[9, 8, 10],
+        closes=[9.5, 8.5, 11.5],
+        volumes=[100, 200, 300],
+    )
+    df = detect_swings(df, k=1)
+    df = detect_intermediate_swings(df, k=1)
+    df = add_indicators(df, rsi_period=2, rolling_window=2)
+
+    context = _leg_context(df, event_idx=2, direction=1, leg_start_idx=1)
+
+    assert pd.isna(context["left_leg_volume_sum"])
+    assert pd.isna(context["left_leg_relative_volume"])
+    assert pd.isna(context["leg_relative_volume_delta"])
+    assert pd.isna(context["leg_relative_volume_delta_bucket"])

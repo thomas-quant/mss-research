@@ -166,6 +166,31 @@ Buckets:
 
 Purpose: test whether MSS works better when the shift leg has stronger directional RSI momentum than the prior leg.
 
+### MSS left/right leg volume comparison
+
+Volume comparison mirrors the RSI delta pattern, but uses length-normalized relative volume for each leg.
+
+Tracked fields:
+
+- `left_leg_volume_sum`
+- `left_leg_relative_volume`
+- `leg_relative_volume_delta`
+- `leg_relative_volume_delta_bucket`
+
+Delta definition:
+
+```text
+leg_relative_volume_delta = leg_relative_volume - left_leg_relative_volume
+```
+
+Buckets:
+
+- `contracting`: `< -0.2`
+- `neutral`: `-0.2 to +0.2`
+- `expanding`: `> +0.2`
+
+Purpose: test whether MSS works better when the shift leg has expanding or contracting relative volume versus the prior leg.
+
 ### Divergences
 
 RSI and volume divergences are measured at matched short-term swings:
@@ -229,6 +254,7 @@ Tracked plots in `outputs/figures/`:
 - `win_rate_by_leg_volume_bucket.png`
 - `win_rate_by_right_leg_rsi_mean_bucket.png`
 - `win_rate_by_leg_rsi_mean_delta_bucket.png`
+- `win_rate_by_leg_relative_volume_delta_bucket.png`
 - `win_rate_by_time_of_day_session.png`
 - `win_rate_by_session_and_leg_volume.png`
 

@@ -155,3 +155,17 @@ def test_summary_plots_include_right_leg_mean_and_relative_momentum_charts(tmp_p
 
     assert "win_rate_by_right_leg_rsi_mean_bucket.png" in names
     assert "win_rate_by_leg_rsi_mean_delta_bucket.png" in names
+
+
+def test_summary_plots_include_leg_relative_volume_delta_chart(tmp_path):
+    summary = pd.DataFrame(
+        [
+            {"event_type": "mss", "swing_tier": "short", "closed_through": True, "horizon": 15, "n": 50, "win_rate": 0.55, "mean_aligned_return": 0.001, "leg_relative_volume_delta_bucket": "expanding"},
+            {"event_type": "mss", "swing_tier": "short", "closed_through": True, "horizon": 15, "n": 50, "win_rate": 0.45, "mean_aligned_return": -0.001, "leg_relative_volume_delta_bucket": "contracting"},
+        ]
+    )
+
+    paths = create_summary_plots(summary, tmp_path)
+    names = {p.name for p in paths}
+
+    assert "win_rate_by_leg_relative_volume_delta_bucket.png" in names

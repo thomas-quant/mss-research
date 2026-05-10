@@ -109,21 +109,27 @@ def detect_intermediate_swings(df: pd.DataFrame, k: int = 1) -> pd.DataFrame:
     out["intermediate_swing_high_available_idx"] = np.nan
     out["intermediate_swing_low_available_idx"] = np.nan
 
-    high_idx = out.index[out["swing_high"]].to_list()
-    for prev_i, cur_i, next_i in zip(high_idx, high_idx[1:], high_idx[2:]):
-        if out.at[cur_i, "High"] > out.at[prev_i, "High"] and out.at[cur_i, "High"] > out.at[next_i, "High"]:
-            avail = next_i + k
-            if avail < n:
-                out.at[cur_i, "intermediate_swing_high"] = True
-                out.at[cur_i, "intermediate_swing_high_available_idx"] = avail
+    high_idx = np.flatnonzero(out["swing_high"].to_numpy(dtype=bool))
+    if len(high_idx) >= 3:
+        prev_i = high_idx[:-2]
+        cur_i = high_idx[1:-1]
+        next_i = high_idx[2:]
+        high = out["High"].to_numpy(dtype=float)
+        avail = next_i + k
+        mask = (high[cur_i] > high[prev_i]) & (high[cur_i] > high[next_i]) & (avail < n)
+        out.loc[cur_i[mask], "intermediate_swing_high"] = True
+        out.loc[cur_i[mask], "intermediate_swing_high_available_idx"] = avail[mask].astype(float)
 
-    low_idx = out.index[out["swing_low"]].to_list()
-    for prev_i, cur_i, next_i in zip(low_idx, low_idx[1:], low_idx[2:]):
-        if out.at[cur_i, "Low"] < out.at[prev_i, "Low"] and out.at[cur_i, "Low"] < out.at[next_i, "Low"]:
-            avail = next_i + k
-            if avail < n:
-                out.at[cur_i, "intermediate_swing_low"] = True
-                out.at[cur_i, "intermediate_swing_low_available_idx"] = avail
+    low_idx = np.flatnonzero(out["swing_low"].to_numpy(dtype=bool))
+    if len(low_idx) >= 3:
+        prev_i = low_idx[:-2]
+        cur_i = low_idx[1:-1]
+        next_i = low_idx[2:]
+        low = out["Low"].to_numpy(dtype=float)
+        avail = next_i + k
+        mask = (low[cur_i] < low[prev_i]) & (low[cur_i] < low[next_i]) & (avail < n)
+        out.loc[cur_i[mask], "intermediate_swing_low"] = True
+        out.loc[cur_i[mask], "intermediate_swing_low_available_idx"] = avail[mask].astype(float)
     return out
 
 
@@ -170,21 +176,26 @@ def add_divergences(df: pd.DataFrame, volume_measure: str = "swing_bar") -> pd.D
     out["rsi_divergence_direction"] = 0
     out["volume_divergence_direction"] = 0
 
-    high_idx = out.index[out["swing_high"]].to_list()
-    for prev_i, cur_i in zip(high_idx, high_idx[1:]):
-        price_extension = out.at[cur_i, "High"] > out.at[prev_i, "High"]
-        if price_extension and out.at[cur_i, "rsi"] < out.at[prev_i, "rsi"]:
-            out.at[cur_i, "rsi_divergence_direction"] = -1
-        if price_extension and out.at[cur_i, "Volume"] < out.at[prev_i, "Volume"]:
-            out.at[cur_i, "volume_divergence_direction"] = -1
+    high = out["High"].to_numpy(dtype=float)
+    low = out["Low"].to_numpy(dtype=float)
+    rsi = out["rsi"].to_numpy(dtype=float)
+    volume = out["Volume"].to_numpy(dtype=float)
 
-    low_idx = out.index[out["swing_low"]].to_list()
-    for prev_i, cur_i in zip(low_idx, low_idx[1:]):
-        price_extension = out.at[cur_i, "Low"] < out.at[prev_i, "Low"]
-        if price_extension and out.at[cur_i, "rsi"] > out.at[prev_i, "rsi"]:
-            out.at[cur_i, "rsi_divergence_direction"] = 1
-        if price_extension and out.at[cur_i, "Volume"] < out.at[prev_i, "Volume"]:
-            out.at[cur_i, "volume_divergence_direction"] = 1
+    high_idx = np.flatnonzero(out["swing_high"].to_numpy(dtype=bool))
+    if len(high_idx) >= 2:
+        prev_i = high_idx[:-1]
+        cur_i = high_idx[1:]
+        price_extension = high[cur_i] > high[prev_i]
+        out.loc[cur_i[price_extension & (rsi[cur_i] < rsi[prev_i])], "rsi_divergence_direction"] = -1
+        out.loc[cur_i[price_extension & (volume[cur_i] < volume[prev_i])], "volume_divergence_direction"] = -1
+
+    low_idx = np.flatnonzero(out["swing_low"].to_numpy(dtype=bool))
+    if len(low_idx) >= 2:
+        prev_i = low_idx[:-1]
+        cur_i = low_idx[1:]
+        price_extension = low[cur_i] < low[prev_i]
+        out.loc[cur_i[price_extension & (rsi[cur_i] > rsi[prev_i])], "rsi_divergence_direction"] = 1
+        out.loc[cur_i[price_extension & (volume[cur_i] < volume[prev_i])], "volume_divergence_direction"] = 1
     return out
 
 
@@ -204,7 +215,7 @@ def _tier_columns(tier: str) -> tuple[str, str, str, str]:
 def detect_mss_events(df: pd.DataFrame, tier: str = "short", k: int = 1) -> pd.DataFrame:
     high_col, low_col, high_avail_col, low_avail_col = _tier_columns(tier)
     _require_columns(df, [high_col, low_col, high_avail_col, low_avail_col, "datetime_utc", *OHLCV])
-    out = df.reset_index(drop=True)
+    out = df.reset_index(drop=True).copy()
     n = len(out)
     high = out["High"].to_numpy(dtype=float)
     low = out["Low"].to_numpy(dtype=float)
@@ -225,6 +236,12 @@ def detect_mss_events(df: pd.DataFrame, tier: str = "short", k: int = 1) -> pd.D
             last_high = idx
         if low_flags[idx]:
             last_low = idx
+
+    short_high_flags = out["swing_high"].to_numpy(dtype=bool) if "swing_high" in out else high_flags
+    short_low_flags = out["swing_low"].to_numpy(dtype=bool) if "swing_low" in out else low_flags
+    out["__last_swing_high_before"] = _last_true_before(short_high_flags)
+    out["__last_swing_low_before"] = _last_true_before(short_low_flags)
+    out["__volume_cumsum"] = np.concatenate([[0.0], out["Volume"].to_numpy(dtype=float).cumsum()])[:-1]
 
     bullish_setup_schedule: dict[int, list[tuple[int, int]]] = {}
     bearish_setup_schedule: dict[int, list[tuple[int, int]]] = {}
@@ -309,6 +326,16 @@ def detect_mss_events(df: pd.DataFrame, tier: str = "short", k: int = 1) -> pd.D
             result[col] = result[col].astype(object)
     return result
 
+
+def _last_true_before(flags: np.ndarray) -> np.ndarray:
+    result = np.full(len(flags), -1, dtype=int)
+    last = -1
+    for idx, flag in enumerate(flags):
+        result[idx] = last
+        if flag:
+            last = idx
+    return result
+
 def _event_row(
     df: pd.DataFrame,
     i: int,
@@ -351,42 +378,58 @@ def _leg_context(df: pd.DataFrame, event_idx: int, direction: int, leg_start_idx
     RSI means are direction-aligned so higher always means stronger in that leg's direction.
     """
     leg_start_idx = int(max(0, min(leg_start_idx, event_idx)))
-    right_leg = df.iloc[leg_start_idx : event_idx + 1]
-    right_bar_count = int(len(right_leg))
-    leg_volume_sum = float(right_leg["Volume"].sum())
+    right_bar_count = int(event_idx - leg_start_idx + 1)
+    volume = df["Volume"].to_numpy(dtype=float)
+    volume_cumsum = df["__volume_cumsum"].to_numpy(dtype=float) if "__volume_cumsum" in df else np.concatenate([[0.0], volume.cumsum()])[:-1]
+    leg_volume_sum = _range_sum(volume_cumsum, volume, leg_start_idx, event_idx)
     baseline_volume = df.iloc[event_idx].get("rolling_volume_median", np.nan)
-    denom = float(baseline_volume) * right_bar_count if pd.notna(baseline_volume) and float(baseline_volume) > 0 else np.nan
-    leg_relative_volume = leg_volume_sum / denom if pd.notna(denom) and denom > 0 else np.nan
+    leg_relative_volume = _leg_relative_volume(leg_volume_sum, right_bar_count, baseline_volume)
+    rsi_values = df["rsi"].to_numpy(dtype=float) if "rsi" in df else None
+    right_rsi = rsi_values[leg_start_idx : event_idx + 1] if rsi_values is not None else None
 
     if direction == 1:
-        right_extreme = float(right_leg["rsi"].max()) if "rsi" in right_leg else np.nan
+        right_extreme = float(np.max(right_rsi)) if right_rsi is not None else np.nan
         right_extreme_aligned = right_extreme
-        right_mean = float(right_leg["rsi"].mean()) if "rsi" in right_leg else np.nan
+        right_mean = float(np.mean(right_rsi)) if right_rsi is not None else np.nan
         right_mean_aligned = right_mean
-        left_candidates = df.index[(df["swing_high"].astype(bool)) & (df.index < leg_start_idx)].to_list()
-        left_start_idx = int(left_candidates[-1]) if left_candidates else np.nan
+        if "__last_swing_high_before" in df:
+            candidate = int(df["__last_swing_high_before"].iat[leg_start_idx])
+            left_start_idx = candidate if candidate >= 0 else np.nan
+        else:
+            left_candidates = df.index[(df["swing_high"].astype(bool)) & (df.index < leg_start_idx)].to_list()
+            left_start_idx = int(left_candidates[-1]) if left_candidates else np.nan
     else:
-        right_extreme = float(right_leg["rsi"].min()) if "rsi" in right_leg else np.nan
+        right_extreme = float(np.min(right_rsi)) if right_rsi is not None else np.nan
         right_extreme_aligned = 100.0 - right_extreme if pd.notna(right_extreme) else np.nan
-        right_mean = float(right_leg["rsi"].mean()) if "rsi" in right_leg else np.nan
+        right_mean = float(np.mean(right_rsi)) if right_rsi is not None else np.nan
         right_mean_aligned = 100.0 - right_mean if pd.notna(right_mean) else np.nan
-        left_candidates = df.index[(df["swing_low"].astype(bool)) & (df.index < leg_start_idx)].to_list()
-        left_start_idx = int(left_candidates[-1]) if left_candidates else np.nan
+        if "__last_swing_low_before" in df:
+            candidate = int(df["__last_swing_low_before"].iat[leg_start_idx])
+            left_start_idx = candidate if candidate >= 0 else np.nan
+        else:
+            left_candidates = df.index[(df["swing_low"].astype(bool)) & (df.index < leg_start_idx)].to_list()
+            left_start_idx = int(left_candidates[-1]) if left_candidates else np.nan
 
     if pd.notna(left_start_idx):
-        left_leg = df.iloc[int(left_start_idx) : leg_start_idx + 1]
-        left_mean = float(left_leg["rsi"].mean()) if "rsi" in left_leg else np.nan
+        left_start_int = int(left_start_idx)
+        left_rsi = rsi_values[left_start_int : leg_start_idx + 1] if rsi_values is not None else None
+        left_mean = float(np.mean(left_rsi)) if left_rsi is not None else np.nan
         # Prior leg direction is opposite the MSS shift direction.
         left_mean_aligned = 100.0 - left_mean if direction == 1 and pd.notna(left_mean) else left_mean
         if direction == -1 and pd.notna(left_mean):
             left_mean_aligned = left_mean
-        left_bar_count = int(len(left_leg))
+        left_bar_count = int(leg_start_idx - left_start_int + 1)
+        left_volume_sum = _range_sum(volume_cumsum, volume, left_start_int, leg_start_idx)
+        left_relative_volume = _leg_relative_volume(left_volume_sum, left_bar_count, baseline_volume)
     else:
         left_mean = np.nan
         left_mean_aligned = np.nan
         left_bar_count = 0
+        left_volume_sum = np.nan
+        left_relative_volume = np.nan
 
     leg_rsi_mean_delta = right_mean_aligned - left_mean_aligned if pd.notna(right_mean_aligned) and pd.notna(left_mean_aligned) else np.nan
+    leg_relative_volume_delta = leg_relative_volume - left_relative_volume if pd.notna(leg_relative_volume) and pd.notna(left_relative_volume) else np.nan
     start_close = float(df.iloc[leg_start_idx]["Close"])
     end_close = float(df.iloc[event_idx]["Close"])
     leg_aligned_return = direction * (end_close / start_close - 1.0) if start_close else np.nan
@@ -404,12 +447,26 @@ def _leg_context(df: pd.DataFrame, event_idx: int, direction: int, leg_start_idx
         "right_leg_rsi_mean_bucket": _bucket_value(right_mean_aligned, (55.0, 65.0), ("low", "medium", "high")),
         "left_leg_start_idx": left_start_idx,
         "left_leg_bar_count": left_bar_count,
+        "left_leg_volume_sum": left_volume_sum,
+        "left_leg_relative_volume": left_relative_volume,
         "left_leg_rsi_mean": left_mean,
         "left_leg_rsi_mean_aligned": left_mean_aligned,
         "leg_rsi_mean_delta": leg_rsi_mean_delta,
         "leg_rsi_mean_delta_bucket": _bucket_value(leg_rsi_mean_delta, (-5.0, 5.0), ("weakening", "neutral", "strengthening")),
+        "leg_relative_volume_delta": leg_relative_volume_delta,
+        "leg_relative_volume_delta_bucket": _bucket_value(leg_relative_volume_delta, (-0.2, 0.2), ("contracting", "neutral", "expanding")),
         "leg_aligned_return": leg_aligned_return,
     }
+
+
+def _range_sum(cumsum_at_index: np.ndarray, values: np.ndarray, start_idx: int, end_idx: int) -> float:
+    return float(cumsum_at_index[end_idx] + values[end_idx] - cumsum_at_index[start_idx])
+
+
+def _leg_relative_volume(volume_sum: float, bar_count: int, baseline_volume: float) -> float:
+    denom = float(baseline_volume) * bar_count if pd.notna(baseline_volume) and float(baseline_volume) > 0 and bar_count > 0 else np.nan
+    return volume_sum / denom if pd.notna(denom) and denom > 0 else np.nan
+
 
 def _bucket_value(value: float, cuts: tuple[float, float], labels: tuple[str, str, str]) -> str | float:
     if pd.isna(value):
@@ -449,25 +506,16 @@ def divergence_events(df: pd.DataFrame, divergence_type: str) -> pd.DataFrame:
 
 def label_forward_returns(events: pd.DataFrame, bars: pd.DataFrame, horizons: Iterable[int]) -> pd.DataFrame:
     out = events.copy().reset_index(drop=True)
-    close = bars["Close"].reset_index(drop=True)
+    close = bars["Close"].reset_index(drop=True).to_numpy(dtype=float)
+    event_idx = out["event_idx"].to_numpy(dtype=int)
+    direction = out["direction"].to_numpy(dtype=int)
     for horizon in horizons:
-        fwd_returns = []
-        aligned_returns = []
-        wins = []
-        for _, event in out.iterrows():
-            i = int(event["event_idx"])
-            target_i = i + int(horizon)
-            if target_i >= len(close):
-                fwd = np.nan
-                aligned = np.nan
-                win = np.nan
-            else:
-                fwd = float(close.iloc[target_i] / close.iloc[i] - 1.0)
-                aligned = fwd * int(event["direction"])
-                win = bool(aligned > 0)
-            fwd_returns.append(fwd)
-            aligned_returns.append(aligned)
-            wins.append(win)
+        target_i = event_idx + int(horizon)
+        valid = target_i < len(close)
+        fwd_returns = np.full(len(out), np.nan, dtype=float)
+        fwd_returns[valid] = close[target_i[valid]] / close[event_idx[valid]] - 1.0
+        aligned_returns = fwd_returns * direction
+        wins = [bool(value > 0) if pd.notna(value) else np.nan for value in aligned_returns]
         out[f"fwd_return_{horizon}"] = fwd_returns
         out[f"aligned_return_{horizon}"] = aligned_returns
         out[f"win_{horizon}"] = pd.Series(wins, dtype=object)
@@ -478,12 +526,30 @@ def bootstrap_ci(values: pd.Series, iterations: int = 1000, seed: int = 7, stati
     clean = pd.Series(values).dropna().astype(float)
     if clean.empty:
         return np.nan, np.nan
-    rng = np.random.default_rng(seed)
-    samples = clean.to_numpy()
-    stats = []
-    for _ in range(iterations):
-        draw = rng.choice(samples, size=len(samples), replace=True)
-        stats.append(float(np.mean(draw) if statistic == "mean" else np.median(draw)))
+    return _bootstrap_ci_from_samples(clean.to_numpy(), iterations, seed, statistic)
+
+
+def _bootstrap_ci_from_samples(
+    samples: np.ndarray,
+    iterations: int = 1000,
+    seed: int = 7,
+    statistic: str = "mean",
+    index_cache: dict[int, np.ndarray] | None = None,
+) -> tuple[float, float]:
+    if len(samples) == 1 or np.all(samples == samples[0]):
+        value = float(samples[0])
+        return value, value
+    if index_cache is not None:
+        indices = index_cache.get(len(samples))
+        if indices is None:
+            rng = np.random.default_rng(seed)
+            indices = rng.integers(0, len(samples), size=(iterations, len(samples)))
+            index_cache[len(samples)] = indices
+        draws = samples[indices]
+    else:
+        rng = np.random.default_rng(seed)
+        draws = rng.choice(samples, size=(iterations, len(samples)), replace=True)
+    stats = draws.mean(axis=1) if statistic == "mean" else np.median(draws, axis=1)
     lo, hi = np.percentile(stats, [2.5, 97.5])
     return float(lo), float(hi)
 
@@ -508,9 +574,17 @@ def summarize_events(events: pd.DataFrame, horizons: Iterable[int], bootstrap_it
             "leg_volume_bucket",
             "right_leg_rsi_mean_bucket",
             "leg_rsi_mean_delta_bucket",
+            "leg_relative_volume_delta_bucket",
         ]
         if c in events.columns
     ]
+    bootstrap_index_cache: dict[int, np.ndarray] = {}
+
+    def cached_bootstrap_ci(clean_values: np.ndarray, statistic: str) -> tuple[float, float]:
+        if len(clean_values) == 0:
+            return np.nan, np.nan
+        return _bootstrap_ci_from_samples(clean_values, bootstrap_iterations, seed, statistic, bootstrap_index_cache)
+
     rows = []
     for keys, group in events.groupby(group_cols, dropna=False):
         if not isinstance(keys, tuple):
@@ -519,8 +593,10 @@ def summarize_events(events: pd.DataFrame, horizons: Iterable[int], bootstrap_it
         for horizon in horizons:
             aligned = group[f"aligned_return_{horizon}"].dropna()
             wins = group[f"win_{horizon}"].dropna().astype(bool)
-            win_lo, win_hi = bootstrap_ci(wins.astype(float), bootstrap_iterations, seed, "mean")
-            mean_lo, mean_hi = bootstrap_ci(aligned, bootstrap_iterations, seed, "mean")
+            win_values = wins.to_numpy(dtype=float)
+            aligned_values = aligned.to_numpy(dtype=float)
+            win_lo, win_hi = cached_bootstrap_ci(win_values, "mean")
+            mean_lo, mean_hi = cached_bootstrap_ci(aligned_values, "mean")
             rows.append(
                 {
                     **base,
