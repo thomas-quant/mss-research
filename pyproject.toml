@@ -12,6 +12,7 @@ dependencies = [
   "pandas",
   "pyarrow",
   "scipy",
+  "matplotlib",
 ]
 
 [tool.setuptools.packages.find]

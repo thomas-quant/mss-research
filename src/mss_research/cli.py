@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .features import StudyConfig
 from .pipeline import run_directory
+from .plots import create_summary_plots_from_csv
 
 
 def parse_args() -> argparse.Namespace:
@@ -16,6 +17,10 @@ def parse_args() -> argparse.Namespace:
     run.add_argument("--timeframes", default="1min,5min,15min", help="Comma-separated pandas resample rules.")
     run.add_argument("--horizons", default="5,15,30,60", help="Comma-separated forward horizons in bars.")
     run.add_argument("--bootstrap", type=int, default=1000, help="Bootstrap iterations for confidence intervals.")
+    run.add_argument("--plots", action="store_true", help="Create matplotlib PNG charts after the study run.")
+    plots = sub.add_parser("plots", help="Create PNG charts from a summary CSV.")
+    plots.add_argument("--summary", type=Path, default=Path("outputs/summary.csv"), help="Summary CSV path.")
+    plots.add_argument("--out", type=Path, default=Path("outputs/figures"), help="Figure output directory.")
     return parser.parse_args()
 
 
@@ -28,4 +33,10 @@ def main() -> None:
             bootstrap_iterations=args.bootstrap,
         )
         events, summary = run_directory(args.data, args.out, config)
+        if args.plots:
+            paths = create_summary_plots_from_csv(args.out / "summary.csv", args.out / "figures")
+            print(f"plots={len(paths)} figures_dir={args.out / 'figures'}")
         print(f"events={len(events)} summary_rows={len(summary)} out={args.out}")
+    elif args.command == "plots":
+        paths = create_summary_plots_from_csv(args.summary, args.out)
+        print(f"plots={len(paths)} figures_dir={args.out}")
