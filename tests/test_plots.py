@@ -76,6 +76,24 @@ def test_create_mss_distribution_plot_writes_quantile_png(tmp_path):
     assert path.exists() and path.stat().st_size > 0
 
 
+def test_create_cisd_distribution_plot_writes_quantile_png(tmp_path):
+    from mss_research.plots import create_cisd_distribution_plot
+
+    events = pd.DataFrame(
+        [
+            {"event_type": "cisd", "cisd_break_level_type": "open", "aligned_return_5": -0.01},
+            {"event_type": "cisd", "cisd_break_level_type": "open", "aligned_return_5": 0.00},
+            {"event_type": "cisd", "cisd_break_level_type": "extreme", "aligned_return_5": 0.03},
+            {"event_type": "mss", "swing_tier": "short", "closed_through": True, "aligned_return_5": 0.10},
+        ]
+    )
+
+    path = create_cisd_distribution_plot(events, tmp_path, horizons=[5])
+
+    assert path.name == "cisd_aligned_return_distribution.png"
+    assert path.exists() and path.stat().st_size > 0
+
+
 def test_summary_plots_include_leg_context_bucket_charts(tmp_path):
     summary = pd.DataFrame(
         [

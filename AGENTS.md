@@ -277,6 +277,7 @@ Tracked plots in `outputs/figures/`:
 - `win_rate_by_event_type.png`
 - `mean_return_by_event_type.png`
 - `mss_aligned_return_distribution.png`
+- `cisd_aligned_return_distribution.png`
 - `sample_size_by_event_type.png`
 - `win_rate_by_momentum_bucket.png`
 - `win_rate_by_relative_volume_bucket.png`

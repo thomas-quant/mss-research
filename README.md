@@ -84,6 +84,8 @@ These figures are generated from the current local summary output and committed 
 
 ![MSS aligned return distribution](outputs/figures/mss_aligned_return_distribution.png)
 
+![CISD aligned return distribution](outputs/figures/cisd_aligned_return_distribution.png)
+
 ![Sample size by event type](outputs/figures/sample_size_by_event_type.png)
 
 ![Win rate by momentum bucket](outputs/figures/win_rate_by_momentum_bucket.png)
@@ -112,7 +114,7 @@ These figures are generated from the current local summary output and committed 
 PYTHONPATH=src python3 -m mss_research plots --summary outputs/summary.csv --out outputs/figures
 ```
 
-Graphs include win rate, mean aligned return, MSS P25/mean/P75 aligned-return distribution, sample size, break-candle momentum/volume buckets, MSS-leg RSI/volume buckets, right-leg mean RSI, right-vs-left RSI delta, right-vs-left relative-volume delta, CISD break-level type, time-of-day sessions, and session-by-leg-volume heatmaps.
+Graphs include win rate, mean aligned return, MSS and CISD P25/mean/P75 aligned-return distributions, sample size, break-candle momentum/volume buckets, MSS-leg RSI/volume buckets, right-leg mean RSI, right-vs-left RSI delta, right-vs-left relative-volume delta, CISD break-level type, time-of-day sessions, and session-by-leg-volume heatmaps.
 
 ## Tests
 

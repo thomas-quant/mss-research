@@ -5,7 +5,13 @@ from pathlib import Path
 
 from .features import StudyConfig
 from .pipeline import run_directory
-from .plots import create_mss_distribution_plot, create_mss_distribution_plot_from_parquet, create_summary_plots_from_csv
+from .plots import (
+    create_cisd_distribution_plot,
+    create_cisd_distribution_plot_from_parquet,
+    create_mss_distribution_plot,
+    create_mss_distribution_plot_from_parquet,
+    create_summary_plots_from_csv,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,10 +44,12 @@ def main() -> None:
             figure_dir = args.out / "figures"
             paths = create_summary_plots_from_csv(args.out / "summary.csv", figure_dir)
             paths.append(create_mss_distribution_plot(events, figure_dir, horizons=config.horizons))
+            paths.append(create_cisd_distribution_plot(events, figure_dir, horizons=config.horizons))
             print(f"plots={len(paths)} figures_dir={figure_dir}")
         print(f"events={len(events)} summary_rows={len(summary)} out={args.out}")
     elif args.command == "plots":
         paths = create_summary_plots_from_csv(args.summary, args.out)
         if args.events.exists():
             paths.append(create_mss_distribution_plot_from_parquet(args.events, args.out))
+            paths.append(create_cisd_distribution_plot_from_parquet(args.events, args.out))
         print(f"plots={len(paths)} figures_dir={args.out}")

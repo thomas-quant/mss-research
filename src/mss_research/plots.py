@@ -249,6 +249,63 @@ def create_mss_distribution_plot(events: pd.DataFrame, out_dir: Path | str, hori
     return path
 
 
+def create_cisd_distribution_plot(events: pd.DataFrame, out_dir: Path | str, horizons: list[int] | tuple[int, ...] | None = None) -> Path:
+    """Plot CISD aligned-return P25/mean/P75 by open/extreme break-level type."""
+    events = _as_pandas(events)
+    required = {"event_type", "cisd_break_level_type"}
+    missing = required - set(events.columns)
+    if missing:
+        raise ValueError(f"events missing columns: {sorted(missing)}")
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    horizon_cols = [c for c in events.columns if c.startswith("aligned_return_")]
+    if horizons is not None:
+        wanted = {f"aligned_return_{int(h)}" for h in horizons}
+        horizon_cols = [c for c in horizon_cols if c in wanted]
+    if not horizon_cols:
+        raise ValueError("events has no aligned_return_* columns")
+
+    cisd = events[events["event_type"] == "cisd"].copy()
+    if cisd.empty:
+        raise ValueError("events has no CISD rows")
+
+    rows = []
+    for col in horizon_cols:
+        horizon = int(col.rsplit("_", 1)[1])
+        for label, group in cisd.groupby("cisd_break_level_type", dropna=False):
+            values = group[col].dropna().astype(float)
+            if values.empty:
+                continue
+            rows.append(
+                {
+                    "event_label": f"cisd/{label}",
+                    "horizon": horizon,
+                    "p25": float(values.quantile(0.25)),
+                    "mean": float(values.mean()),
+                    "p75": float(values.quantile(0.75)),
+                    "n": int(len(values)),
+                }
+            )
+    plot_df = pd.DataFrame(rows)
+    path = out_path / "cisd_aligned_return_distribution.png"
+
+    fig, ax = plt.subplots(figsize=(11, 7))
+    for label, group in plot_df.groupby("event_label"):
+        group = group.sort_values("horizon")
+        ax.plot(group["horizon"], group["mean"], marker="o", label=f"{label} mean")
+        ax.fill_between(group["horizon"], group["p25"], group["p75"], alpha=0.15)
+    ax.axhline(0.0, color="black", linewidth=1, linestyle="--", alpha=0.6)
+    ax.set_xlabel("Forward horizon (bars)")
+    ax.set_ylabel("Aligned return")
+    ax.set_title("CISD aligned-return distribution: P25 / mean / P75")
+    ax.grid(True, alpha=0.25)
+    ax.legend(fontsize=8)
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
+
+
 def _session_volume_heatmap(data: pd.DataFrame, path: Path) -> Path:
     filtered = data[(data["event_type"] == "mss") if "event_type" in data.columns else True].dropna(subset=["event_session", "leg_volume_bucket"])
     rows = []
@@ -286,6 +343,10 @@ def _session_volume_heatmap(data: pd.DataFrame, path: Path) -> Path:
 
 def create_mss_distribution_plot_from_parquet(events_parquet: Path | str, out_dir: Path | str) -> Path:
     return create_mss_distribution_plot(pl.read_parquet(events_parquet), out_dir)
+
+
+def create_cisd_distribution_plot_from_parquet(events_parquet: Path | str, out_dir: Path | str) -> Path:
+    return create_cisd_distribution_plot(pl.read_parquet(events_parquet), out_dir)
 
 
 def create_summary_plots_from_csv(summary_csv: Path | str, out_dir: Path | str) -> list[Path]:
