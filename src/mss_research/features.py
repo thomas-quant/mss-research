@@ -180,63 +180,99 @@ def detect_mss_events(df: pd.DataFrame, tier: str = "short", k: int = 1) -> pd.D
     high = out["High"].to_numpy(dtype=float)
     low = out["Low"].to_numpy(dtype=float)
     close = out["Close"].to_numpy(dtype=float)
-    last_swing_high_before = np.full(n, -1, dtype=int)
-    last_swing_low_before = np.full(n, -1, dtype=int)
-    last_high = -1
-    last_low = -1
-    short_high_flags = out["swing_high"].to_numpy(dtype=bool) if "swing_high" in out.columns else np.zeros(n, dtype=bool)
-    short_low_flags = out["swing_low"].to_numpy(dtype=bool) if "swing_low" in out.columns else np.zeros(n, dtype=bool)
-    for idx in range(n):
-        last_swing_high_before[idx] = last_high
-        last_swing_low_before[idx] = last_low
-        if short_high_flags[idx]:
-            last_high = idx
-        if short_low_flags[idx]:
-            last_low = idx
-
-    high_schedule: dict[int, list[int]] = {}
-    low_schedule: dict[int, list[int]] = {}
     high_flags = out[high_col].to_numpy(dtype=bool)
     low_flags = out[low_col].to_numpy(dtype=bool)
     high_avail = out[high_avail_col].to_numpy(dtype=float)
     low_avail = out[low_avail_col].to_numpy(dtype=float)
 
-    for swing_i in np.flatnonzero(high_flags):
-        avail = high_avail[swing_i]
-        if np.isfinite(avail) and 0 <= int(avail) < n:
-            high_schedule.setdefault(int(avail), []).append(int(swing_i))
-    for swing_i in np.flatnonzero(low_flags):
-        avail = low_avail[swing_i]
-        if np.isfinite(avail) and 0 <= int(avail) < n:
-            low_schedule.setdefault(int(avail), []).append(int(swing_i))
+    last_swing_high_before = np.full(n, -1, dtype=int)
+    last_swing_low_before = np.full(n, -1, dtype=int)
+    last_high = -1
+    last_low = -1
+    for idx in range(n):
+        last_swing_high_before[idx] = last_high
+        last_swing_low_before[idx] = last_low
+        if high_flags[idx]:
+            last_high = idx
+        if low_flags[idx]:
+            last_low = idx
+
+    bullish_setup_schedule: dict[int, list[tuple[int, int]]] = {}
+    bearish_setup_schedule: dict[int, list[tuple[int, int]]] = {}
+    for low_idx in np.flatnonzero(low_flags):
+        avail = low_avail[low_idx]
+        broken_high_idx = int(last_swing_high_before[low_idx])
+        if broken_high_idx >= 0 and np.isfinite(avail) and 0 <= int(avail) < n:
+            bullish_setup_schedule.setdefault(int(avail), []).append((int(low_idx), broken_high_idx))
+    for high_idx in np.flatnonzero(high_flags):
+        avail = high_avail[high_idx]
+        broken_low_idx = int(last_swing_low_before[high_idx])
+        if broken_low_idx >= 0 and np.isfinite(avail) and 0 <= int(avail) < n:
+            bearish_setup_schedule.setdefault(int(avail), []).append((int(high_idx), broken_low_idx))
 
     events: list[dict] = []
+    active_bull_extremity_idx: int | None = None
     active_high_idx: int | None = None
     active_high_price = np.nan
-    active_high_avail = -1
+    active_bull_avail = -1
+    active_bull_extremity_price = np.inf
+    active_bear_extremity_idx: int | None = None
     active_low_idx: int | None = None
     active_low_price = np.nan
-    active_low_avail = -1
+    active_bear_avail = -1
+    active_bear_extremity_price = -np.inf
 
     for i in range(n):
-        for swing_i in high_schedule.get(i, []):
-            active_high_idx = swing_i
-            active_high_price = high[swing_i]
-            active_high_avail = i
-        for swing_i in low_schedule.get(i, []):
-            active_low_idx = swing_i
-            active_low_price = low[swing_i]
-            active_low_avail = i
+        for extremity_idx, broken_high_idx in bullish_setup_schedule.get(i, []):
+            extremity_price = low[extremity_idx]
+            if active_high_idx is None or extremity_price < active_bull_extremity_price:
+                active_bull_extremity_idx = extremity_idx
+                active_bull_extremity_price = extremity_price
+                active_high_idx = broken_high_idx
+                active_high_price = high[broken_high_idx]
+                active_bull_avail = i
+        for extremity_idx, broken_low_idx in bearish_setup_schedule.get(i, []):
+            extremity_price = high[extremity_idx]
+            if active_low_idx is None or extremity_price > active_bear_extremity_price:
+                active_bear_extremity_idx = extremity_idx
+                active_bear_extremity_price = extremity_price
+                active_low_idx = broken_low_idx
+                active_low_price = low[broken_low_idx]
+                active_bear_avail = i
 
-        if active_high_idx is not None and i > active_high_avail and high[i] > active_high_price:
-            leg_start_idx = int(last_swing_low_before[i]) if last_swing_low_before[i] >= 0 else max(0, i - 1)
-            events.append(_event_row(out, i, 1, tier, active_high_idx, active_high_price, close[i] > active_high_price, leg_start_idx))
+        if active_high_idx is not None and active_bull_extremity_idx is not None and i >= active_bull_avail and high[i] > active_high_price:
+            events.append(
+                _event_row(
+                    out,
+                    i,
+                    1,
+                    tier,
+                    active_high_idx,
+                    active_high_price,
+                    close[i] > active_high_price,
+                    active_bull_extremity_idx,
+                )
+            )
             active_high_idx = None
+            active_bull_extremity_idx = None
+            active_bull_extremity_price = np.inf
 
-        if active_low_idx is not None and i > active_low_avail and low[i] < active_low_price:
-            leg_start_idx = int(last_swing_high_before[i]) if last_swing_high_before[i] >= 0 else max(0, i - 1)
-            events.append(_event_row(out, i, -1, tier, active_low_idx, active_low_price, close[i] < active_low_price, leg_start_idx))
+        if active_low_idx is not None and active_bear_extremity_idx is not None and i >= active_bear_avail and low[i] < active_low_price:
+            events.append(
+                _event_row(
+                    out,
+                    i,
+                    -1,
+                    tier,
+                    active_low_idx,
+                    active_low_price,
+                    close[i] < active_low_price,
+                    active_bear_extremity_idx,
+                )
+            )
             active_low_idx = None
+            active_bear_extremity_idx = None
+            active_bear_extremity_price = -np.inf
 
     result = pd.DataFrame(events)
     for col in ["traded_through", "closed_through", "broken_swing_rsi_divergence", "broken_swing_volume_divergence"]:

@@ -175,3 +175,22 @@ def test_mss_event_includes_leg_volume_and_rsi_momentum_context():
     assert bullish["leg_rsi_extreme"] == 72
     assert bullish["leg_rsi_aligned"] == 72
     assert bullish["leg_rsi_momentum_bucket"] == "high"
+
+
+def test_bullish_mss_breaks_high_left_of_low_extremity_not_post_low_swing_high():
+    df = bars(
+        [15, 20, 16, 18, 17, 19.5, 20.5],
+        lows=[14, 15, 10, 12, 11, 13, 14],
+        closes=[14.5, 19, 11, 17, 16, 19, 20.2],
+        volumes=[100] * 7,
+    )
+    df = detect_swings(df, k=1)
+    df = detect_intermediate_swings(df, k=1)
+    df = add_indicators(df, rsi_period=2, rolling_window=2)
+
+    events = detect_mss_events(df, tier="short", k=1)
+    bullish = events[events["direction"] == 1]
+
+    assert bullish["event_idx"].tolist() == [6]
+    assert bullish.iloc[0]["broken_swing_idx"] == 1
+    assert bullish.iloc[0]["leg_start_idx"] == 2

@@ -25,6 +25,10 @@ Required columns:
 datetime_utc, Open, High, Low, Close, Volume
 ```
 
+## Leg-based MSS definition
+
+Bullish MSS only counts when price breaks a swing high that is left of the lowest swing-low extremity in the displacement leg. A swing high formed after that low is not eligible as the bullish shift level. Bearish MSS mirrors this: the broken swing low must be left of the highest swing-high extremity.
+
 ## Run study
 
 ```bash
@@ -34,7 +38,7 @@ PYTHONPATH=src python3 -m mss_research run --data data --out outputs --plots
 Useful faster run:
 
 ```bash
-PYTHONPATH=src python3 -m mss_research run --data data --out outputs --timeframes 15min --horizons 5 --bootstrap 100 --plots
+PYTHONPATH=src python3 -m mss_research run --data data --out outputs --timeframes 15min --horizons 5,15,30,60 --bootstrap 100 --plots
 ```
 
 Outputs:

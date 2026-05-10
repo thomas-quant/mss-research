@@ -111,3 +111,17 @@ def test_summary_plots_include_leg_context_bucket_charts(tmp_path):
 
     assert "win_rate_by_leg_rsi_momentum_bucket.png" in names
     assert "win_rate_by_leg_volume_bucket.png" in names
+
+
+def test_leg_bucket_plots_exclude_nan_bucket_rows(tmp_path):
+    summary = pd.DataFrame(
+        [
+            {"event_type": "mss", "swing_tier": "short", "closed_through": True, "horizon": 5, "n": 50, "win_rate": 0.55, "mean_aligned_return": 0.001, "leg_rsi_momentum_bucket": "high", "leg_volume_bucket": "high"},
+            {"event_type": "rsi_divergence", "swing_tier": "short", "closed_through": pd.NA, "horizon": 5, "n": 500, "win_rate": 0.99, "mean_aligned_return": 0.01, "leg_rsi_momentum_bucket": pd.NA, "leg_volume_bucket": pd.NA},
+        ]
+    )
+
+    data = create_summary_plots(summary, tmp_path)
+
+    assert (tmp_path / "win_rate_by_leg_rsi_momentum_bucket.png").exists()
+    assert (tmp_path / "win_rate_by_leg_volume_bucket.png").exists()

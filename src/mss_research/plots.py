@@ -114,6 +114,7 @@ def _bar_plot(data: pd.DataFrame, path: Path) -> Path:
 
 def _bucket_plot(data: pd.DataFrame, bucket_col: str, y_col: str, path: Path) -> Path:
     rows = []
+    data = data.dropna(subset=[bucket_col])
     for (bucket, horizon), group in data.groupby([bucket_col, "horizon"], dropna=False):
         weights = group["n"].astype(float)
         if weights.sum() <= 0:
