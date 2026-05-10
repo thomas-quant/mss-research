@@ -169,3 +169,17 @@ def test_summary_plots_include_leg_relative_volume_delta_chart(tmp_path):
     names = {p.name for p in paths}
 
     assert "win_rate_by_leg_relative_volume_delta_bucket.png" in names
+
+
+def test_summary_plots_include_cisd_break_level_type_chart(tmp_path):
+    summary = pd.DataFrame(
+        [
+            {"event_type": "cisd", "cisd_break_level_type": "open", "horizon": 15, "n": 50, "win_rate": 0.55, "mean_aligned_return": 0.001},
+            {"event_type": "cisd", "cisd_break_level_type": "extreme", "horizon": 15, "n": 50, "win_rate": 0.45, "mean_aligned_return": -0.001},
+        ]
+    )
+
+    paths = create_summary_plots(summary, tmp_path)
+    names = {p.name for p in paths}
+
+    assert "win_rate_by_cisd_break_level_type.png" in names

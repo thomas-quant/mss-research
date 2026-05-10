@@ -318,6 +318,96 @@ def detect_mss_events(df: Any, tier: str = "short", k: int = 1) -> pl.DataFrame:
     return pl.DataFrame(events) if events else pl.DataFrame()
 
 
+def detect_cisd_events(df: Any, k: int = 1, min_run_length: int = 3) -> pl.DataFrame:
+    """Detect standalone ICT change-in-state-of-delivery events at confirmed short swings.
+
+    A bullish CISD anchors on a confirmed short swing low with at least ``min_run_length``
+    contiguous down-close candles ending at the anchor. Bearish CISD mirrors this at
+    swing highs with contiguous up-close candles. Both the run-start open level and
+    the run extreme level are emitted as separate close-break event variants.
+    """
+    if min_run_length < 1:
+        raise ValueError("min_run_length must be >= 1")
+    out = _to_polars(df)
+    _require_columns(out, ["swing_high", "swing_low", "swing_high_available_idx", "swing_low_available_idx", "datetime_utc", *OHLCV])
+    n = out.height
+    if n == 0:
+        return pl.DataFrame()
+
+    open_ = out["Open"].to_numpy().astype(float)
+    high = out["High"].to_numpy().astype(float)
+    low = out["Low"].to_numpy().astype(float)
+    close = out["Close"].to_numpy().astype(float)
+    swing_high = out["swing_high"].to_numpy().astype(bool)
+    swing_low = out["swing_low"].to_numpy().astype(bool)
+    high_avail = out["swing_high_available_idx"].to_numpy()
+    low_avail = out["swing_low_available_idx"].to_numpy()
+    down_close = np.zeros(n, dtype=bool)
+    up_close = np.zeros(n, dtype=bool)
+    down_close[1:] = close[1:] < close[:-1]
+    up_close[1:] = close[1:] > close[:-1]
+
+    ctx = _FrameContext(out, swing_high, swing_low)
+    events: list[dict] = []
+
+    for anchor_idx in np.flatnonzero(swing_low):
+        avail = low_avail[anchor_idx]
+        if not np.isfinite(avail) or int(avail) >= n:
+            continue
+        run_start, run_length = _directional_run_start(down_close, int(anchor_idx))
+        if run_length < min_run_length:
+            continue
+        run_end = int(anchor_idx)
+        levels = {
+            "open": float(open_[run_start]),
+            "extreme": float(np.max(high[run_start : run_end + 1])),
+        }
+        for level_type, level in levels.items():
+            event_idx = _first_close_break(close, int(avail), level, direction=1)
+            if event_idx is not None:
+                events.append(_cisd_event_row(ctx, event_idx, 1, int(anchor_idx), run_start, run_end, run_length, level_type, level))
+
+    for anchor_idx in np.flatnonzero(swing_high):
+        avail = high_avail[anchor_idx]
+        if not np.isfinite(avail) or int(avail) >= n:
+            continue
+        run_start, run_length = _directional_run_start(up_close, int(anchor_idx))
+        if run_length < min_run_length:
+            continue
+        run_end = int(anchor_idx)
+        levels = {
+            "open": float(open_[run_start]),
+            "extreme": float(np.min(low[run_start : run_end + 1])),
+        }
+        for level_type, level in levels.items():
+            event_idx = _first_close_break(close, int(avail), level, direction=-1)
+            if event_idx is not None:
+                events.append(_cisd_event_row(ctx, event_idx, -1, int(anchor_idx), run_start, run_end, run_length, level_type, level))
+
+    events.sort(key=lambda row: (row["event_idx"], row["direction"], row["cisd_break_level_type"], row["cisd_anchor_idx"]))
+    return pl.DataFrame(events) if events else pl.DataFrame()
+
+
+def _directional_run_start(direction_flags: np.ndarray, anchor_idx: int) -> tuple[int, int]:
+    if anchor_idx <= 0 or not bool(direction_flags[anchor_idx]):
+        return anchor_idx, 0
+    run_start = int(anchor_idx)
+    while run_start > 0 and bool(direction_flags[run_start]):
+        run_start -= 1
+    run_start += 1
+    return run_start, int(anchor_idx - run_start + 1)
+
+
+def _first_close_break(close: np.ndarray, start_idx: int, level: float, direction: int) -> int | None:
+    if direction == 1:
+        hits = np.flatnonzero(close[start_idx:] > level)
+    else:
+        hits = np.flatnonzero(close[start_idx:] < level)
+    if len(hits) == 0:
+        return None
+    return int(start_idx + hits[0])
+
+
 class _FrameContext:
     def __init__(self, df: pl.DataFrame, short_high_flags: np.ndarray, short_low_flags: np.ndarray):
         self.df = df
@@ -357,6 +447,39 @@ def _event_row(ctx: _FrameContext, i: int, direction: int, tier: str, swing_idx:
         "broken_swing_rsi_divergence": bool(ctx.rsi_div[swing_idx] == -direction),
         "broken_swing_volume_divergence": bool(ctx.vol_div[swing_idx] == -direction),
         **leg,
+    }
+
+
+def _cisd_event_row(
+    ctx: _FrameContext,
+    i: int,
+    direction: int,
+    anchor_idx: int,
+    run_start_idx: int,
+    run_end_idx: int,
+    run_length: int,
+    level_type: str,
+    level: float,
+) -> dict:
+    return {
+        "event_type": "cisd",
+        "event_idx": int(i),
+        "datetime_utc": ctx.datetime[i],
+        "event_session": assign_time_of_day_session(ctx.datetime[i]),
+        "direction": int(direction),
+        "swing_tier": "short",
+        "traded_through": True,
+        "closed_through": True,
+        "momentum_ratio": float(ctx.momentum_ratio[i]) if not _is_missing(ctx.momentum_ratio[i]) else np.nan,
+        "relative_volume": float(ctx.relative_volume[i]) if not _is_missing(ctx.relative_volume[i]) else np.nan,
+        "momentum_bucket": ctx.momentum_bucket[i],
+        "relative_volume_bucket": ctx.relative_volume_bucket[i],
+        "cisd_break_level_type": level_type,
+        "cisd_anchor_idx": int(anchor_idx),
+        "cisd_run_start_idx": int(run_start_idx),
+        "cisd_run_end_idx": int(run_end_idx),
+        "cisd_run_length": int(run_length),
+        "cisd_break_level": float(level),
     }
 
 
@@ -475,7 +598,7 @@ def divergence_events(df: Any, divergence_type: str) -> pl.DataFrame:
             "momentum_bucket": momentum_bucket[i],
             "relative_volume_bucket": relative_volume_bucket[i],
         })
-    return pl.DataFrame(rows) if rows else pl.DataFrame()
+    return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()
 
 
 def label_forward_returns(events: Any, bars: Any, horizons: Iterable[int]) -> pl.DataFrame:
@@ -529,7 +652,28 @@ def summarize_events(events: Any, horizons: Iterable[int], bootstrap_iterations:
     events_pl = _to_polars(events)
     if events_pl.is_empty():
         return pl.DataFrame()
-    group_cols = [c for c in ["instrument", "timeframe", "event_type", "event_session", "swing_tier", "closed_through", "momentum_bucket", "relative_volume_bucket", "broken_swing_rsi_divergence", "broken_swing_volume_divergence", "leg_rsi_momentum_bucket", "leg_volume_bucket", "right_leg_rsi_mean_bucket", "leg_rsi_mean_delta_bucket", "leg_relative_volume_delta_bucket"] if c in events_pl.columns]
+    group_cols = [
+        c
+        for c in [
+            "instrument",
+            "timeframe",
+            "event_type",
+            "event_session",
+            "swing_tier",
+            "closed_through",
+            "momentum_bucket",
+            "relative_volume_bucket",
+            "broken_swing_rsi_divergence",
+            "broken_swing_volume_divergence",
+            "leg_rsi_momentum_bucket",
+            "leg_volume_bucket",
+            "right_leg_rsi_mean_bucket",
+            "leg_rsi_mean_delta_bucket",
+            "leg_relative_volume_delta_bucket",
+            "cisd_break_level_type",
+        ]
+        if c in events_pl.columns
+    ]
     rows = []
     index_cache: dict[int, np.ndarray] = {}
     for part in events_pl.partition_by(group_cols, maintain_order=True, include_key=True, as_dict=False):
@@ -555,4 +699,4 @@ def summarize_events(events: Any, horizons: Iterable[int], bootstrap_iterations:
                 "median_aligned_return": float(np.median(aligned)) if len(aligned) else np.nan,
                 "p75_aligned_return": float(np.quantile(aligned, 0.75)) if len(aligned) else np.nan,
             })
-    return pl.DataFrame(rows) if rows else pl.DataFrame()
+    return pl.DataFrame(rows, infer_schema_length=None) if rows else pl.DataFrame()

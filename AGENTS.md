@@ -5,6 +5,7 @@
 This repo tests whether retail-trader market structure concepts predict future direction in ES/NQ intraday futures data. The current research focus is event studies around:
 
 - Market structure shifts (MSS)
+- Change in state of delivery (CISD)
 - RSI divergences
 - Volume divergences
 - Context filters: structure prominence, break type, momentum, volume, time of day, and leg comparisons
@@ -57,7 +58,7 @@ Tests:
 python3 -m pytest -q
 ```
 
-Latest verified test state when this file was written: `18 passed`.
+Latest verified test state when this file was written: `29 passed`.
 
 ## Market structure definitions
 
@@ -99,6 +100,35 @@ MSS captures both:
 
 - `traded_through`
 - `closed_through`
+
+### CISD standalone events
+
+Change in state of delivery (CISD) is tracked as standalone event rows around confirmed short-term swing extrema.
+
+Bullish CISD:
+
+- Anchor = confirmed short-term swing low.
+- Left run = at least 3 contiguous down-close candles into/ending at the swing-low area.
+- `open` setup level = open of the top candle in the down-close run.
+- `extreme` setup level = maximum high of the down-close run.
+- Event fires only when a later available candle closes above the setup level.
+
+Bearish CISD mirrors bullish:
+
+- Anchor = confirmed short-term swing high.
+- Left run = at least 3 contiguous up-close candles into/ending at the swing-high area.
+- `open` setup level = open of the bottom candle in the up-close run.
+- `extreme` setup level = minimum low of the up-close run.
+- Event fires only when a later available candle closes below the setup level.
+
+Tracked fields:
+
+- `cisd_break_level_type`
+- `cisd_anchor_idx`
+- `cisd_run_start_idx`
+- `cisd_run_end_idx`
+- `cisd_run_length`
+- `cisd_break_level`
 
 ## Current features
 
@@ -255,6 +285,7 @@ Tracked plots in `outputs/figures/`:
 - `win_rate_by_right_leg_rsi_mean_bucket.png`
 - `win_rate_by_leg_rsi_mean_delta_bucket.png`
 - `win_rate_by_leg_relative_volume_delta_bucket.png`
+- `win_rate_by_cisd_break_level_type.png`
 - `win_rate_by_time_of_day_session.png`
 - `win_rate_by_session_and_leg_volume.png`
 

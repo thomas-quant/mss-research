@@ -89,6 +89,8 @@ def create_summary_plots(summary: pd.DataFrame, out_dir: Path | str) -> list[Pat
         paths.append(_bucket_plot(data, "leg_rsi_mean_delta_bucket", "win_rate", out_path / "win_rate_by_leg_rsi_mean_delta_bucket.png"))
     if "leg_relative_volume_delta_bucket" in data.columns:
         paths.append(_bucket_plot(data, "leg_relative_volume_delta_bucket", "win_rate", out_path / "win_rate_by_leg_relative_volume_delta_bucket.png"))
+    if "cisd_break_level_type" in data.columns:
+        paths.append(_bucket_plot(data, "cisd_break_level_type", "win_rate", out_path / "win_rate_by_cisd_break_level_type.png"))
     if "event_session" in data.columns:
         paths.append(_bucket_plot(data, "event_session", "win_rate", out_path / "win_rate_by_time_of_day_session.png"))
     if "event_session" in data.columns and "leg_volume_bucket" in data.columns:

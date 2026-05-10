@@ -8,6 +8,7 @@ from .features import (
     StudyConfig,
     add_divergences,
     add_indicators,
+    detect_cisd_events,
     detect_intermediate_swings,
     detect_mss_events,
     detect_swings,
@@ -37,6 +38,7 @@ def run_file(path: Path, out_dir: Path, config: StudyConfig = StudyConfig()) -> 
         events = []
         for tier in ("short", "intermediate"):
             events.append(detect_mss_events(bars, tier=tier, k=config.swing_k))
+        events.append(detect_cisd_events(bars, k=config.swing_k))
         events.append(divergence_events(bars, "rsi"))
         events.append(divergence_events(bars, "volume"))
         events = [e for e in events if not e.is_empty()]

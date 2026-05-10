@@ -4,6 +4,7 @@ import pytest
 
 from mss_research.features import (
     add_indicators,
+    detect_cisd_events,
     detect_intermediate_swings,
     detect_mss_events,
     detect_swings,
@@ -345,3 +346,121 @@ def test_mss_event_volume_delta_is_nan_without_prior_left_leg():
     assert pd.isna(context["left_leg_relative_volume"])
     assert pd.isna(context["leg_relative_volume_delta"])
     assert pd.isna(context["leg_relative_volume_delta_bucket"])
+
+
+def test_detect_cisd_events_fires_bullish_open_and_extreme_breaks_after_confirmed_swing_low():
+    df = bars(
+        [12.2, 12.1, 11.0, 10.2, 11.0, 12.0, 12.6],
+        lows=[11.8, 10.8, 9.8, 8.5, 9.5, 10.7, 11.8],
+        closes=[12.0, 11.0, 10.0, 9.0, 10.5, 11.8, 12.3],
+        opens=[12.0, 11.6, 10.8, 9.8, 9.2, 11.0, 12.0],
+        volumes=[100] * 7,
+    )
+    df = detect_swings(df, k=1)
+    df = add_indicators(df, rsi_period=2, rolling_window=2)
+
+    events = detect_cisd_events(df, k=1)
+
+    out = as_pd(events).sort_values("cisd_break_level_type").reset_index(drop=True)
+    assert out["event_type"].tolist() == ["cisd", "cisd"]
+    assert out["direction"].tolist() == [1, 1]
+    assert out["cisd_break_level_type"].tolist() == ["extreme", "open"]
+    assert out["event_idx"].tolist() == [6, 5]
+    assert out["cisd_anchor_idx"].tolist() == [3, 3]
+    assert out["cisd_run_start_idx"].tolist() == [1, 1]
+    assert out["cisd_run_end_idx"].tolist() == [3, 3]
+    assert out["cisd_run_length"].tolist() == [3, 3]
+    assert out.loc[0, "cisd_break_level"] == pytest.approx(12.1)
+    assert out.loc[1, "cisd_break_level"] == pytest.approx(11.6)
+
+
+def test_detect_cisd_events_fires_bearish_open_and_extreme_breaks_after_confirmed_swing_high():
+    df = bars(
+        [10.2, 11.2, 12.2, 13.5, 12.8, 11.5, 10.5],
+        lows=[9.8, 10.0, 11.0, 12.0, 11.2, 10.1, 9.4],
+        closes=[10.0, 11.0, 12.0, 13.0, 12.4, 10.2, 9.8],
+        opens=[10.0, 10.4, 11.2, 12.6, 12.8, 12.0, 10.5],
+        volumes=[100] * 7,
+    )
+    df = detect_swings(df, k=1)
+    df = add_indicators(df, rsi_period=2, rolling_window=2)
+
+    events = detect_cisd_events(df, k=1)
+
+    out = as_pd(events).sort_values("cisd_break_level_type").reset_index(drop=True)
+    assert out["event_type"].tolist() == ["cisd", "cisd"]
+    assert out["direction"].tolist() == [-1, -1]
+    assert out["cisd_break_level_type"].tolist() == ["extreme", "open"]
+    assert out["event_idx"].tolist() == [6, 5]
+    assert out["cisd_anchor_idx"].tolist() == [3, 3]
+    assert out["cisd_run_start_idx"].tolist() == [1, 1]
+    assert out["cisd_run_end_idx"].tolist() == [3, 3]
+    assert out["cisd_run_length"].tolist() == [3, 3]
+    assert out.loc[0, "cisd_break_level"] == pytest.approx(10.0)
+    assert out.loc[1, "cisd_break_level"] == pytest.approx(10.4)
+
+
+def test_detect_cisd_events_requires_three_candle_run_and_close_break():
+    two_candle_run = bars(
+        [12.0, 11.0, 10.2, 11.0, 12.0],
+        lows=[11.5, 10.0, 8.5, 9.5, 10.5],
+        closes=[12.0, 11.0, 10.0, 10.5, 12.2],
+        opens=[12.0, 11.6, 10.8, 9.5, 11.0],
+    )
+    two_candle_run = add_indicators(detect_swings(two_candle_run, k=1), rsi_period=2, rolling_window=2)
+
+    assert detect_cisd_events(two_candle_run, k=1).is_empty()
+
+    intrabar_only = bars(
+        [12.2, 12.1, 11.0, 10.2, 11.0, 12.5],
+        lows=[11.8, 10.8, 9.8, 8.5, 9.5, 10.7],
+        closes=[12.0, 11.0, 10.0, 9.0, 10.5, 11.4],
+        opens=[12.0, 11.6, 10.8, 9.8, 9.2, 11.0],
+    )
+    intrabar_only = add_indicators(detect_swings(intrabar_only, k=1), rsi_period=2, rolling_window=2)
+
+    assert detect_cisd_events(intrabar_only, k=1).is_empty()
+
+
+def test_summarize_events_groups_by_cisd_break_level_type():
+    from mss_research.features import summarize_events
+
+    events = pd.DataFrame(
+        {
+            "instrument": ["ES", "ES"],
+            "timeframe": ["5min", "5min"],
+            "event_type": ["cisd", "cisd"],
+            "cisd_break_level_type": ["open", "extreme"],
+            "aligned_return_5": [0.02, -0.01],
+            "win_5": [True, False],
+        }
+    )
+
+    summary = summarize_events(events, horizons=[5], bootstrap_iterations=5)
+
+    assert set(as_pd(summary)["cisd_break_level_type"]) == {"open", "extreme"}
+
+
+def test_summarize_events_handles_mixed_cisd_and_non_cisd_rows():
+    from mss_research.features import summarize_events
+
+    n_mss = 110
+    events = pd.DataFrame(
+        {
+            "instrument": ["ES"] * (n_mss + 1),
+            "timeframe": ["5min"] * (n_mss + 1),
+            "event_type": ["mss"] * n_mss + ["cisd"],
+            "event_session": [f"s{i}" for i in range(n_mss)] + ["s_cisd"],
+            "swing_tier": ["short"] * (n_mss + 1),
+            "closed_through": [True] * (n_mss + 1),
+            "cisd_break_level_type": [pd.NA] * n_mss + ["open"],
+            "aligned_return_5": [0.01] * n_mss + [-0.01],
+            "win_5": [True] * n_mss + [False],
+        }
+    )
+
+    summary = summarize_events(events, horizons=[5], bootstrap_iterations=5)
+
+    out = as_pd(summary)
+    assert set(out["event_type"]) == {"mss", "cisd"}
+    assert out.loc[out["event_type"] == "cisd", "cisd_break_level_type"].iloc[0] == "open"
