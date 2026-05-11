@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import heapq
 from math import isnan
 from typing import Iterable, Any
 from zoneinfo import ZoneInfo
@@ -348,7 +349,8 @@ def detect_cisd_events(df: Any, k: int = 1, min_run_length: int = 3) -> pl.DataF
     up_close[1:] = close[1:] > close[:-1]
 
     ctx = _FrameContext(out, swing_high, swing_low)
-    events: list[dict] = []
+    bullish_setup_schedule: dict[int, list[tuple[int, int, int, int, str, float]]] = {}
+    bearish_setup_schedule: dict[int, list[tuple[int, int, int, int, str, float]]] = {}
 
     for anchor_idx in np.flatnonzero(swing_low):
         avail = low_avail[anchor_idx]
@@ -363,9 +365,7 @@ def detect_cisd_events(df: Any, k: int = 1, min_run_length: int = 3) -> pl.DataF
             "extreme": float(np.max(high[run_start : run_end + 1])),
         }
         for level_type, level in levels.items():
-            event_idx = _first_close_break(close, int(avail), level, direction=1)
-            if event_idx is not None:
-                events.append(_cisd_event_row(ctx, event_idx, 1, int(anchor_idx), run_start, run_end, run_length, level_type, level))
+            bullish_setup_schedule.setdefault(int(avail), []).append((int(anchor_idx), run_start, run_end, run_length, level_type, level))
 
     for anchor_idx in np.flatnonzero(swing_high):
         avail = high_avail[anchor_idx]
@@ -380,9 +380,28 @@ def detect_cisd_events(df: Any, k: int = 1, min_run_length: int = 3) -> pl.DataF
             "extreme": float(np.min(low[run_start : run_end + 1])),
         }
         for level_type, level in levels.items():
-            event_idx = _first_close_break(close, int(avail), level, direction=-1)
-            if event_idx is not None:
-                events.append(_cisd_event_row(ctx, event_idx, -1, int(anchor_idx), run_start, run_end, run_length, level_type, level))
+            bearish_setup_schedule.setdefault(int(avail), []).append((int(anchor_idx), run_start, run_end, run_length, level_type, level))
+
+    events: list[dict] = []
+    bullish_heap: list[tuple[float, int, tuple[int, int, int, int, str, float]]] = []
+    bearish_heap: list[tuple[float, int, tuple[int, int, int, int, str, float]]] = []
+    sequence = 0
+    for i in range(n):
+        for setup in bullish_setup_schedule.get(i, []):
+            heapq.heappush(bullish_heap, (setup[5], sequence, setup))
+            sequence += 1
+        for setup in bearish_setup_schedule.get(i, []):
+            heapq.heappush(bearish_heap, (-setup[5], sequence, setup))
+            sequence += 1
+
+        while bullish_heap and close[i] > bullish_heap[0][0]:
+            _, _, setup = heapq.heappop(bullish_heap)
+            anchor_idx, run_start, run_end, run_length, level_type, level = setup
+            events.append(_cisd_event_row(ctx, i, 1, anchor_idx, run_start, run_end, run_length, level_type, level))
+        while bearish_heap and close[i] < -bearish_heap[0][0]:
+            _, _, setup = heapq.heappop(bearish_heap)
+            anchor_idx, run_start, run_end, run_length, level_type, level = setup
+            events.append(_cisd_event_row(ctx, i, -1, anchor_idx, run_start, run_end, run_length, level_type, level))
 
     events.sort(key=lambda row: (row["event_idx"], row["direction"], row["cisd_break_level_type"], row["cisd_anchor_idx"]))
     return pl.DataFrame(events) if events else pl.DataFrame()
@@ -396,16 +415,6 @@ def _directional_run_start(direction_flags: np.ndarray, anchor_idx: int) -> tupl
         run_start -= 1
     run_start += 1
     return run_start, int(anchor_idx - run_start + 1)
-
-
-def _first_close_break(close: np.ndarray, start_idx: int, level: float, direction: int) -> int | None:
-    if direction == 1:
-        hits = np.flatnonzero(close[start_idx:] > level)
-    else:
-        hits = np.flatnonzero(close[start_idx:] < level)
-    if len(hits) == 0:
-        return None
-    return int(start_idx + hits[0])
 
 
 class _FrameContext:
@@ -674,6 +683,28 @@ def summarize_events(events: Any, horizons: Iterable[int], bootstrap_iterations:
         ]
         if c in events_pl.columns
     ]
+    if bootstrap_iterations <= 0:
+        summaries = []
+        for horizon in horizons:
+            aligned_col = f"aligned_return_{horizon}"
+            win_col = f"win_{horizon}"
+            summaries.append(
+                events_pl.group_by(group_cols)
+                .agg(
+                    pl.col(aligned_col).drop_nans().drop_nulls().len().alias("n"),
+                    pl.col(win_col).cast(pl.Float64).drop_nans().drop_nulls().mean().alias("win_rate"),
+                    pl.lit(np.nan).alias("win_rate_ci_low"),
+                    pl.lit(np.nan).alias("win_rate_ci_high"),
+                    pl.col(aligned_col).drop_nans().drop_nulls().mean().alias("mean_aligned_return"),
+                    pl.lit(np.nan).alias("mean_aligned_return_ci_low"),
+                    pl.lit(np.nan).alias("mean_aligned_return_ci_high"),
+                    pl.col(aligned_col).drop_nans().drop_nulls().quantile(0.25, interpolation="linear").alias("p25_aligned_return"),
+                    pl.col(aligned_col).drop_nans().drop_nulls().median().alias("median_aligned_return"),
+                    pl.col(aligned_col).drop_nans().drop_nulls().quantile(0.75, interpolation="linear").alias("p75_aligned_return"),
+                )
+                .with_columns(pl.lit(int(horizon)).alias("horizon"))
+            )
+        return pl.concat(summaries, how="diagonal_relaxed") if summaries else pl.DataFrame()
     rows = []
     index_cache: dict[int, np.ndarray] = {}
     for part in events_pl.partition_by(group_cols, maintain_order=True, include_key=True, as_dict=False):

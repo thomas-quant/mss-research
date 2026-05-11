@@ -74,6 +74,37 @@ def create_summary_plots(summary: pd.DataFrame, out_dir: Path | str) -> list[Pat
         )
     )
     paths.append(_bar_plot(data, out_path / "sample_size_by_event_type.png"))
+    if "timeframe" in data.columns:
+        paths.append(
+            _timeframe_event_plot(
+                data,
+                "win_rate",
+                "Win rate",
+                out_path / "win_rate_by_timeframe_and_event_type.png",
+                baseline=0.5,
+            )
+        )
+        paths.append(
+            _timeframe_event_plot(
+                data,
+                "mean_aligned_return",
+                "Mean aligned return",
+                out_path / "mean_return_by_timeframe_and_event_type.png",
+                baseline=0.0,
+            )
+        )
+        if "p75_aligned_return" in data.columns:
+            paths.append(
+                _timeframe_event_plot(
+                    data,
+                    "p75_aligned_return",
+                    "P75 aligned return",
+                    out_path / "p75_return_by_timeframe_and_event_type.png",
+                    baseline=0.0,
+                )
+            )
+            if "cisd_break_level_type" in data.columns:
+                paths.append(_cisd_timeframe_p75_plot(data, out_path / "cisd_p75_return_by_timeframe.png"))
 
     if "momentum_bucket" in data.columns:
         paths.append(_bucket_plot(data, "momentum_bucket", "win_rate", out_path / "win_rate_by_momentum_bucket.png"))
@@ -124,6 +155,76 @@ def _bar_plot(data: pd.DataFrame, path: Path) -> Path:
     ax.set_ylabel("Summary sample count")
     ax.set_title("Sample size by event type")
     ax.grid(True, axis="y", alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
+
+
+def _weighted_by_timeframe_event(summary: pd.DataFrame, value_col: str) -> pd.DataFrame:
+    rows = []
+    for (timeframe, event_label, horizon), group in summary.groupby(["timeframe", "event_label", "horizon"], dropna=False):
+        weights = group["n"].astype(float)
+        values = group[value_col].astype(float)
+        if weights.sum() <= 0:
+            continue
+        rows.append(
+            {
+                "timeframe": str(timeframe),
+                "event_label": str(event_label),
+                "plot_label": f"{timeframe}/{event_label}",
+                "horizon": int(horizon),
+                value_col: float((values * weights).sum() / weights.sum()),
+                "n": int(weights.sum()),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _timeframe_event_plot(data: pd.DataFrame, y_col: str, ylabel: str, path: Path, baseline: float) -> Path:
+    plot_df = _weighted_by_timeframe_event(data, y_col)
+    fig, ax = plt.subplots(figsize=(12, 7))
+    for label, group in plot_df.groupby("plot_label"):
+        group = group.sort_values("horizon")
+        ax.plot(group["horizon"], group[y_col], marker="o", label=str(label))
+    ax.axhline(baseline, color="black", linewidth=1, linestyle="--", alpha=0.6)
+    ax.set_xlabel("Forward horizon (bars)")
+    ax.set_ylabel(ylabel)
+    ax.set_title(f"{ylabel} by timeframe and event type")
+    ax.grid(True, alpha=0.25)
+    ax.legend(fontsize=7, ncol=2)
+    fig.tight_layout()
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
+
+
+def _cisd_timeframe_p75_plot(data: pd.DataFrame, path: Path) -> Path:
+    filtered = data[data["event_type"] == "cisd"].dropna(subset=["timeframe", "cisd_break_level_type", "p75_aligned_return"])
+    rows = []
+    for (timeframe, level_type, horizon), group in filtered.groupby(["timeframe", "cisd_break_level_type", "horizon"], dropna=False):
+        weights = group["n"].astype(float)
+        if weights.sum() <= 0:
+            continue
+        values = group["p75_aligned_return"].astype(float)
+        rows.append(
+            {
+                "plot_label": f"{timeframe}/{level_type}",
+                "horizon": int(horizon),
+                "p75_aligned_return": float((values * weights).sum() / weights.sum()),
+            }
+        )
+    plot_df = pd.DataFrame(rows)
+    fig, ax = plt.subplots(figsize=(11, 7))
+    for label, group in plot_df.groupby("plot_label"):
+        group = group.sort_values("horizon")
+        ax.plot(group["horizon"], group["p75_aligned_return"], marker="o", label=str(label))
+    ax.axhline(0.0, color="black", linewidth=1, linestyle="--", alpha=0.6)
+    ax.set_xlabel("Forward horizon (bars)")
+    ax.set_ylabel("P75 aligned return")
+    ax.set_title("CISD P75 aligned return by timeframe and break-level type")
+    ax.grid(True, alpha=0.25)
+    ax.legend(fontsize=8)
     fig.tight_layout()
     fig.savefig(path, dpi=160)
     plt.close(fig)

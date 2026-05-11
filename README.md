@@ -66,6 +66,8 @@ Useful faster run:
 PYTHONPATH=src python3 -m mss_research run --data data --out outputs --timeframes 15min --horizons 5,15,30,60 --bootstrap 100 --plots
 ```
 
+For all-timeframe comparisons on memory-limited machines, run each timeframe separately and combine the summary CSVs. Use `--bootstrap 0` for fast vectorized Polars summaries when confidence intervals are not needed.
+
 Outputs:
 
 ```text
@@ -82,9 +84,17 @@ These figures are generated from the current local summary output and committed 
 
 ![Mean aligned return by event type](outputs/figures/mean_return_by_event_type.png)
 
+![Win rate by timeframe and event type](outputs/figures/win_rate_by_timeframe_and_event_type.png)
+
+![Mean aligned return by timeframe and event type](outputs/figures/mean_return_by_timeframe_and_event_type.png)
+
+![P75 aligned return by timeframe and event type](outputs/figures/p75_return_by_timeframe_and_event_type.png)
+
 ![MSS aligned return distribution](outputs/figures/mss_aligned_return_distribution.png)
 
 ![CISD aligned return distribution](outputs/figures/cisd_aligned_return_distribution.png)
+
+![CISD P75 aligned return by timeframe](outputs/figures/cisd_p75_return_by_timeframe.png)
 
 ![Sample size by event type](outputs/figures/sample_size_by_event_type.png)
 
@@ -114,7 +124,7 @@ These figures are generated from the current local summary output and committed 
 PYTHONPATH=src python3 -m mss_research plots --summary outputs/summary.csv --out outputs/figures
 ```
 
-Graphs include win rate, mean aligned return, MSS and CISD P25/mean/P75 aligned-return distributions, sample size, break-candle momentum/volume buckets, MSS-leg RSI/volume buckets, right-leg mean RSI, right-vs-left RSI delta, right-vs-left relative-volume delta, CISD break-level type, time-of-day sessions, and session-by-leg-volume heatmaps.
+Graphs include win rate, mean aligned return, timeframe-by-event comparisons, P75 aligned-return comparisons, MSS and CISD P25/mean/P75 aligned-return distributions, sample size, break-candle momentum/volume buckets, MSS-leg RSI/volume buckets, right-leg mean RSI, right-vs-left RSI delta, right-vs-left relative-volume delta, CISD break-level type, time-of-day sessions, and session-by-leg-volume heatmaps.
 
 ## Tests
 

@@ -201,3 +201,21 @@ def test_summary_plots_include_cisd_break_level_type_chart(tmp_path):
     names = {p.name for p in paths}
 
     assert "win_rate_by_cisd_break_level_type.png" in names
+
+
+def test_summary_plots_include_timeframe_comparison_charts(tmp_path):
+    summary = pd.DataFrame(
+        [
+            {"timeframe": "1min", "event_type": "cisd", "cisd_break_level_type": "open", "horizon": 5, "n": 100, "win_rate": 0.51, "mean_aligned_return": 0.001, "p75_aligned_return": 0.002},
+            {"timeframe": "5min", "event_type": "cisd", "cisd_break_level_type": "open", "horizon": 5, "n": 80, "win_rate": 0.49, "mean_aligned_return": -0.001, "p75_aligned_return": 0.003},
+            {"timeframe": "15min", "event_type": "mss", "swing_tier": "short", "closed_through": True, "horizon": 5, "n": 60, "win_rate": 0.47, "mean_aligned_return": -0.002, "p75_aligned_return": 0.004},
+        ]
+    )
+
+    paths = create_summary_plots(summary, tmp_path)
+    names = {p.name for p in paths}
+
+    assert "win_rate_by_timeframe_and_event_type.png" in names
+    assert "mean_return_by_timeframe_and_event_type.png" in names
+    assert "p75_return_by_timeframe_and_event_type.png" in names
+    assert "cisd_p75_return_by_timeframe.png" in names

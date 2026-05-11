@@ -168,6 +168,31 @@ def test_summarize_events_includes_p25_and_p75_aligned_returns():
     assert summary_pd.loc[0, "p75_aligned_return"] == pytest.approx(0.0175)
 
 
+def test_summarize_events_bootstrap_zero_uses_vectorized_polars_stats():
+    from mss_research.features import summarize_events
+
+    events = pd.DataFrame(
+        {
+            "instrument": ["ES"] * 4,
+            "timeframe": ["1min", "1min", "5min", "5min"],
+            "event_type": ["cisd"] * 4,
+            "cisd_break_level_type": ["open"] * 4,
+            "aligned_return_5": [-0.02, 0.04, -0.01, 0.03],
+            "win_5": [False, True, False, True],
+        }
+    )
+
+    summary = summarize_events(events, horizons=[5], bootstrap_iterations=0)
+
+    summary_pd = as_pd(summary).sort_values("timeframe").reset_index(drop=True)
+    assert summary_pd["timeframe"].tolist() == ["1min", "5min"]
+    assert summary_pd.loc[0, "n"] == 2
+    assert summary_pd.loc[0, "win_rate"] == pytest.approx(0.5)
+    assert summary_pd.loc[0, "mean_aligned_return"] == pytest.approx(0.01)
+    assert summary_pd.loc[0, "p75_aligned_return"] == pytest.approx(0.025)
+    assert pd.isna(summary_pd.loc[0, "win_rate_ci_low"])
+
+
 def test_bootstrap_ci_preserves_seeded_sampling_sequence():
     from mss_research.features import bootstrap_ci
 

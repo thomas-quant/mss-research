@@ -58,7 +58,7 @@ Tests:
 python3 -m pytest -q
 ```
 
-Latest verified test state when this file was written: `29 passed`.
+Latest verified test state when this file was written: `32 passed`.
 
 ## Market structure definitions
 
@@ -276,8 +276,12 @@ Tracked plots in `outputs/figures/`:
 
 - `win_rate_by_event_type.png`
 - `mean_return_by_event_type.png`
+- `win_rate_by_timeframe_and_event_type.png`
+- `mean_return_by_timeframe_and_event_type.png`
+- `p75_return_by_timeframe_and_event_type.png`
 - `mss_aligned_return_distribution.png`
 - `cisd_aligned_return_distribution.png`
+- `cisd_p75_return_by_timeframe.png`
 - `sample_size_by_event_type.png`
 - `win_rate_by_momentum_bucket.png`
 - `win_rate_by_relative_volume_bucket.png`
@@ -300,6 +304,8 @@ Tracked plots in `outputs/figures/`:
 ## Implementation notes for future agents
 
 - Use TDD for feature changes. Tests live in `tests/test_features.py` and `tests/test_plots.py`.
+- For all-timeframe comparisons on this machine, run 1min/5min/15min separately and combine summaries; a single all-timeframe run can exceed memory.
+- Use `--bootstrap 0` for fast vectorized Polars summaries when confidence intervals are not needed.
 - Do not commit raw data or large output tables.
 - It is OK to commit small PNG figures under `outputs/figures/`.
 - If changing MSS rules, add targeted synthetic fixtures first. The most important rule is that the broken level must be left of the relevant extremity.
