@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import math
 
 import matplotlib
 
@@ -10,8 +11,98 @@ import pandas as pd
 import polars as pl
 
 
+EVENT_CORRELATION_TYPES = ("cisd", "mss", "rsi_divergence", "volume_divergence")
+EVENT_CORRELATION_LABELS = {
+    "cisd": "CISD",
+    "mss": "MSS",
+    "rsi_divergence": "RSI div",
+    "volume_divergence": "Vol div",
+}
+
+
 def _as_pandas(df):
     return df.to_pandas() if isinstance(df, pl.DataFrame) else df
+
+
+def compute_event_type_correlations(events: pl.DataFrame | pd.DataFrame, n_bars: int, timeframe: str) -> pl.DataFrame:
+    """Compute same-bar binary Pearson/phi correlations between event types."""
+    events_pl = events if isinstance(events, pl.DataFrame) else pl.from_pandas(events)
+    required = {"instrument", "event_idx", "event_type"}
+    missing = required - set(events_pl.columns)
+    if missing:
+        raise ValueError(f"events missing columns: {sorted(missing)}")
+
+    base = (
+        events_pl.select("instrument", "event_idx", "event_type")
+        .filter(pl.col("event_type").is_in(EVENT_CORRELATION_TYPES))
+        .unique()
+    )
+    sets = {
+        event_type: base.filter(pl.col("event_type") == event_type).select("instrument", "event_idx").unique()
+        for event_type in EVENT_CORRELATION_TYPES
+    }
+    counts = {event_type: sets[event_type].height for event_type in EVENT_CORRELATION_TYPES}
+    rows = []
+    for pos, event_a in enumerate(EVENT_CORRELATION_TYPES):
+        for event_b in EVENT_CORRELATION_TYPES[pos + 1 :]:
+            count_a = counts[event_a]
+            count_b = counts[event_b]
+            overlap = sets[event_a].join(sets[event_b], on=["instrument", "event_idx"], how="inner").height
+            denom = math.sqrt(count_a * count_b * (n_bars - count_a) * (n_bars - count_b))
+            phi = ((overlap * n_bars) - (count_a * count_b)) / denom if denom else float("nan")
+            rows.append(
+                {
+                    "timeframe": timeframe,
+                    "event_a": event_a,
+                    "event_b": event_b,
+                    "event_a_label": EVENT_CORRELATION_LABELS[event_a],
+                    "event_b_label": EVENT_CORRELATION_LABELS[event_b],
+                    "count_a": count_a,
+                    "count_b": count_b,
+                    "n_bars": int(n_bars),
+                    "same_bar_overlap": int(overlap),
+                    "pearson_phi": float(phi),
+                    "pct_a_with_b": overlap / count_a if count_a else float("nan"),
+                    "pct_b_with_a": overlap / count_b if count_b else float("nan"),
+                }
+            )
+    return pl.DataFrame(rows)
+
+
+def create_event_correlation_plot(correlations: pl.DataFrame | pd.DataFrame, out_dir: Path | str) -> Path:
+    """Create Matplotlib heatmaps for same-bar event-type Pearson/phi correlation."""
+    corr = _as_pandas(correlations)
+    required = {"timeframe", "event_a", "event_b", "pearson_phi"}
+    missing = required - set(corr.columns)
+    if missing:
+        raise ValueError(f"correlations missing columns: {sorted(missing)}")
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    path = out_path / "event_type_correlation_by_timeframe.png"
+
+    timeframes = list(corr["timeframe"].dropna().unique())
+    preferred = ["1min", "5min", "15min"]
+    timeframes = [tf for tf in preferred if tf in timeframes] + [tf for tf in timeframes if tf not in preferred]
+    labels = [EVENT_CORRELATION_LABELS[event_type] for event_type in EVENT_CORRELATION_TYPES]
+    fig, axes = plt.subplots(1, len(timeframes), figsize=(5 * len(timeframes), 5), squeeze=False, constrained_layout=True)
+    for ax, timeframe in zip(axes[0], timeframes):
+        matrix = pd.DataFrame(0.0, index=EVENT_CORRELATION_TYPES, columns=EVENT_CORRELATION_TYPES)
+        frame = corr[corr["timeframe"] == timeframe]
+        for _, row in frame.iterrows():
+            matrix.loc[row["event_a"], row["event_b"]] = float(row["pearson_phi"])
+            matrix.loc[row["event_b"], row["event_a"]] = float(row["pearson_phi"])
+        image = ax.imshow(matrix.to_numpy(dtype=float), vmin=-0.35, vmax=0.35, cmap="RdBu_r")
+        ax.set_xticks(range(len(labels)), labels, rotation=35, ha="right")
+        ax.set_yticks(range(len(labels)), labels)
+        ax.set_title(f"{timeframe} same-bar Pearson/phi")
+        for y in range(len(labels)):
+            for x in range(len(labels)):
+                value = matrix.iloc[y, x]
+                ax.text(x, y, f"{value:.2f}", ha="center", va="center", fontsize=9)
+    fig.colorbar(image, ax=axes.ravel().tolist(), label="Correlation")
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return path
 
 
 def _clean_summary(summary: pd.DataFrame) -> pd.DataFrame:

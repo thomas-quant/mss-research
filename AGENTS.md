@@ -279,6 +279,7 @@ Tracked plots in `outputs/figures/`:
 - `win_rate_by_timeframe_and_event_type.png`
 - `mean_return_by_timeframe_and_event_type.png`
 - `p75_return_by_timeframe_and_event_type.png`
+- `event_type_correlation_by_timeframe.png`
 - `mss_aligned_return_distribution.png`
 - `cisd_aligned_return_distribution.png`
 - `cisd_p75_return_by_timeframe.png`

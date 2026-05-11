@@ -1,6 +1,7 @@
 import pandas as pd
+import polars as pl
 
-from mss_research.plots import create_summary_plots
+from mss_research.plots import compute_event_type_correlations, create_event_correlation_plot, create_summary_plots
 
 
 def test_create_summary_plots_writes_core_pngs(tmp_path):
@@ -219,3 +220,27 @@ def test_summary_plots_include_timeframe_comparison_charts(tmp_path):
     assert "mean_return_by_timeframe_and_event_type.png" in names
     assert "p75_return_by_timeframe_and_event_type.png" in names
     assert "cisd_p75_return_by_timeframe.png" in names
+
+
+def test_compute_event_type_correlations_and_plot(tmp_path):
+    events = pl.DataFrame(
+        {
+            "instrument": ["ES", "ES", "ES", "ES", "ES", "ES"],
+            "event_idx": [1, 1, 2, 3, 3, 4],
+            "event_type": ["cisd", "mss", "cisd", "rsi_divergence", "volume_divergence", "mss"],
+        }
+    )
+
+    corr = compute_event_type_correlations(events, n_bars=10, timeframe="1min")
+
+    out = corr.to_pandas()
+    cisd_mss = out.query("event_a == 'cisd' and event_b == 'mss'").iloc[0]
+    assert cisd_mss["same_bar_overlap"] == 1
+    assert cisd_mss["count_a"] == 2
+    assert cisd_mss["count_b"] == 2
+    assert cisd_mss["pearson_phi"] == 0.375
+
+    path = create_event_correlation_plot(corr, tmp_path)
+
+    assert path.name == "event_type_correlation_by_timeframe.png"
+    assert path.exists() and path.stat().st_size > 0

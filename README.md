@@ -90,6 +90,8 @@ These figures are generated from the current local summary output and committed 
 
 ![P75 aligned return by timeframe and event type](outputs/figures/p75_return_by_timeframe_and_event_type.png)
 
+![Event-type correlation by timeframe](outputs/figures/event_type_correlation_by_timeframe.png)
+
 ![MSS aligned return distribution](outputs/figures/mss_aligned_return_distribution.png)
 
 ![CISD aligned return distribution](outputs/figures/cisd_aligned_return_distribution.png)
@@ -124,7 +126,7 @@ These figures are generated from the current local summary output and committed 
 PYTHONPATH=src python3 -m mss_research plots --summary outputs/summary.csv --out outputs/figures
 ```
 
-Graphs include win rate, mean aligned return, timeframe-by-event comparisons, P75 aligned-return comparisons, MSS and CISD P25/mean/P75 aligned-return distributions, sample size, break-candle momentum/volume buckets, MSS-leg RSI/volume buckets, right-leg mean RSI, right-vs-left RSI delta, right-vs-left relative-volume delta, CISD break-level type, time-of-day sessions, and session-by-leg-volume heatmaps.
+Graphs include win rate, mean aligned return, timeframe-by-event comparisons, same-bar event-type correlation heatmaps, P75 aligned-return comparisons, MSS and CISD P25/mean/P75 aligned-return distributions, sample size, break-candle momentum/volume buckets, MSS-leg RSI/volume buckets, right-leg mean RSI, right-vs-left RSI delta, right-vs-left relative-volume delta, CISD break-level type, time-of-day sessions, and session-by-leg-volume heatmaps.
 
 ## Tests
 
